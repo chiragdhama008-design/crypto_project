@@ -178,6 +178,25 @@ export const TransactionInvestigation: React.FC = () => {
           </div>
 
           <div className="flex items-center space-x-4 font-mono">
+            {intelData?.gnn_prediction && (
+              <>
+                <div className="text-right">
+                  <div className="text-[10px] uppercase font-semibold text-[#ffa116] flex items-center justify-end space-x-1">
+                    <Network className="w-3 h-3 text-[#ffa116]" />
+                    <span>GNN Relational</span>
+                  </div>
+                  <div className="text-xs font-bold text-[#eff1f6] flex items-center justify-end space-x-1 mt-0.5">
+                    <span className={intelData.gnn_prediction.prediction === 'ILLICIT' ? 'text-[#ef4743]' : 'text-[#00b8a3]'}>
+                      {intelData.gnn_prediction.prediction}
+                    </span>
+                    <span className="text-[#8c8c8c] text-[10px]">
+                      ({(intelData.gnn_prediction.illicit_probability * 100).toFixed(1)}%)
+                    </span>
+                  </div>
+                </div>
+                <div className="h-8 w-px bg-[#3e3e3e]"></div>
+              </>
+            )}
             <div className="text-right">
               <div className="text-[10px] uppercase font-semibold text-[#8c8c8c]">ML Illicit Probability</div>
               <div className="text-base font-bold text-[#eff1f6]">
@@ -249,15 +268,35 @@ export const TransactionInvestigation: React.FC = () => {
                 <LabelBadge label={tx.known_label} />
               </div>
               <div className="flex justify-between py-1 border-b border-[#2d2d2d]">
-                <span className="text-[#8c8c8c]">Model Prediction</span>
+                <span className="text-[#8c8c8c]">Tabular Model Prediction</span>
                 {tx.prediction ? <LabelBadge label={tx.prediction} isPrediction /> : <span className="text-[#6b7280]">—</span>}
               </div>
               <div className="flex justify-between py-1 border-b border-[#2d2d2d]">
-                <span className="text-[#8c8c8c]">Illicit Probability</span>
+                <span className="text-[#8c8c8c]">Tabular Illicit Probability</span>
                 <span className="font-semibold text-[#eff1f6]">
                   {tx.prediction_probability !== null && tx.prediction_probability !== undefined ? `${(tx.prediction_probability * 100).toFixed(2)}%` : '—'}
                 </span>
               </div>
+              {intelData?.gnn_prediction && (
+                <>
+                  <div className="flex justify-between py-1 border-b border-[#2d2d2d]">
+                    <span className="text-[#ffa116] flex items-center space-x-1">
+                      <Network className="w-3 h-3 text-[#ffa116]" />
+                      <span>GNN (GraphSAGE) Prediction</span>
+                    </span>
+                    <LabelBadge label={intelData.gnn_prediction.prediction as any} isPrediction />
+                  </div>
+                  <div className="flex justify-between py-1 border-b border-[#2d2d2d]">
+                    <span className="text-[#ffa116] flex items-center space-x-1">
+                      <Network className="w-3 h-3 text-[#ffa116]" />
+                      <span>GNN Illicit / Licit Probs</span>
+                    </span>
+                    <span className="font-semibold text-[#eff1f6]">
+                      {(intelData.gnn_prediction.illicit_probability * 100).toFixed(2)}% / {(intelData.gnn_prediction.licit_probability * 100).toFixed(2)}%
+                    </span>
+                  </div>
+                </>
+              )}
               <div className="flex justify-between py-1 border-b border-[#2d2d2d]">
                 <span className="text-[#8c8c8c]">Composite Risk Score</span>
                 <RiskBadge score={tx.risk_score} level={tx.risk_level} />

@@ -69,7 +69,7 @@ def list_models(db: Session = Depends(get_db)):
 
     return {
         "active_model": settings.ACTIVE_MODEL,
-        "supported_architectures": ["Logistic Regression", "Random Forest", "Gradient Boosting"],
+        "supported_architectures": ["Logistic Regression", "Random Forest", "Gradient Boosting", "Graph Neural Network (GNN)"],
         "models": models_list
     }
 
@@ -77,10 +77,14 @@ def list_models(db: Session = Depends(get_db)):
 @router.get("/{model_name}/metrics")
 def get_model_metrics(model_name: str, db: Session = Depends(get_db)):
     clean_name = model_name.replace("_", " ").title()
-    record = db.query(ModelMetric).filter(
+    filter_expr = (
         (ModelMetric.model_name.ilike(f"%{clean_name}%")) | 
         (ModelMetric.model_name.ilike(f"%{model_name}%"))
-    ).first()
+    )
+    if model_name.lower() in ("gnn", "graph_neural_network", "graphsage"):
+        filter_expr = filter_expr | (ModelMetric.model_name.ilike("%gnn%")) | (ModelMetric.model_name.ilike("%graph%"))
+
+    record = db.query(ModelMetric).filter(filter_expr).first()
 
     if record and record.details:
         details = json.loads(record.details)
@@ -108,11 +112,20 @@ def get_model_metrics(model_name: str, db: Session = Depends(get_db)):
         return sanitize_floats(result)
 
     # Fallback to disk cache if DB metrics table not populated yet
+    if model_name.lower() in ("gnn", "graph_neural_network", "graphsage"):
+        gnn_file = MODEL_CACHE_DIR / "gnn_metrics.json"
+        if gnn_file.exists():
+            try:
+                with open(gnn_file, "r", encoding="utf-8") as jf:
+                    return sanitize_floats(json.load(jf))
+            except Exception:
+                pass
+
     for f in MODEL_CACHE_DIR.glob("*_metrics.json"):
         try:
             with open(f, "r", encoding="utf-8") as jf:
                 data = json.load(jf)
-                if model_name.lower() in data["model_name"].lower():
+                if model_name.lower() in data["model_name"].lower() or (model_name.lower() == "gnn" and "graph" in data["model_name"].lower()):
                     return sanitize_floats(data)
         except Exception:
             pass

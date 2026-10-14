@@ -33,26 +33,6 @@ const bottomItems = [
 export const Sidebar: React.FC = () => {
   return (
     <aside className="w-56 bg-[#1a1a1a] text-[#9ca3af] flex flex-col h-screen border-r border-[#333333] select-none flex-shrink-0">
-      {/* Brand Header - LeetCode Style */}
-      <div className="px-4 py-3.5 border-b border-[#333333] flex items-center justify-between bg-[#1f1f1f]">
-        <div className="flex items-center space-x-2.5">
-          <div className="w-7 h-7 rounded bg-[#2a2a2a] border border-[#3e3e3e] flex items-center justify-center font-mono font-bold text-[#ffa116] text-xs shadow-inner">
-            &lt;/&gt;
-          </div>
-          <div>
-            <div className="font-bold text-[#eff1f6] text-sm tracking-tight flex items-center space-x-1.5 font-mono">
-              <span>TRACE<span className="text-[#ffa116]">-X</span></span>
-              <span className="text-[9px] font-semibold bg-[#ffa116]/15 text-[#ffa116] border border-[#ffa116]/30 px-1 py-0.2 rounded">v1.0</span>
-            </div>
-            <div className="text-[10px] text-[#8c8c8c] font-mono tracking-tight flex items-center space-x-1">
-              <span>ChainGuard</span>
-              <span>•</span>
-              <span className="text-[#00b8a3]">ONLINE</span>
-            </div>
-          </div>
-        </div>
-      </div>
-
       {/* Main Navigation */}
       <div className="flex-1 py-2 px-1.5 overflow-y-auto space-y-0.5">
         <div className="px-3 py-1 text-[10px] font-mono font-semibold text-[#6b7280] uppercase tracking-wider">

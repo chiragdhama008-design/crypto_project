@@ -50,11 +50,19 @@ export interface TransactionIntelligenceResponse {
   ml_signals: IntelligenceSignal[];
   graph_signals: IntelligenceSignal[];
   feature_signals: IntelligenceSignal[];
+  gnn_prediction?: {
+    prediction: string;
+    illicit_probability: number;
+    licit_probability: number;
+    metadata?: any;
+  };
   risk_summary: {
     risk_score: number;
     risk_level: RiskLevel;
     known_label: KnownLabel;
     prediction?: PredictionLabel;
+    gnn_prediction?: string;
+    gnn_probability?: number;
     total_neighbors: number;
     known_illicit_neighbors: number;
     suspicious_neighbors_count: number;
@@ -200,6 +208,10 @@ export interface ModelMetrics {
     importance: number;
     category: string;
   }>;
+  training_duration_seconds?: number;
+  best_epoch?: number;
+  architecture?: string;
+  test_samples_evaluated?: number;
 }
 
 export interface SystemHealth {

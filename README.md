@@ -88,7 +88,7 @@ Imagine you have **203,769 Bitcoin transactions** and you want to figure out whi
 |-------------|----------------------------------------------------------------------------|
 | **Frontend**   | React 19, TypeScript, Vite 8, TailwindCSS 3, Recharts (charts), Cytoscape.js (graph viz), Lucide React (icons), React Router v7 |
 | **Backend**    | Python, FastAPI, SQLAlchemy, Pydantic, Supabase Python SDK                |
-| **ML**         | scikit-learn (Logistic Regression, Random Forest, Gradient Boosting), NumPy, Pandas, joblib |
+| **ML & GNN**   | PyTorch & PyTorch Geometric (2-Layer GraphSAGE), scikit-learn (Logistic Regression, Random Forest, Gradient Boosting), NumPy, Pandas, joblib |
 | **Database**   | Supabase PostgreSQL (production) / SQLite (local dev fallback)            |
 | **Dataset**    | [Elliptic Bitcoin Dataset](https://www.kaggle.com/datasets/ellipticco/elliptic-data-set) — 203K transactions, 234K edges, 165 features |
 
@@ -115,11 +115,11 @@ crypto_project/
 │   │   │   ├── transactions.py  # CRUD /api/transactions — search, filter, paginate
 │   │   │   ├── graph.py         # GET /api/graph/:id — subgraph traversal
 │   │   │   ├── risk.py          # GET /api/risk — risk alerts & high-risk transactions
-│   │   │   ├── models.py        # GET /api/models — ML model performance metrics
+│   │   │   ├── models.py        # GET /api/models — ML & GNN performance metrics
 │   │   │   ├── analytics.py     # GET /api/analytics — aggregate stats
 │   │   │   ├── cases.py         # CRUD /api/cases — investigation case management
 │   │   │   ├── reports.py       # GET /api/reports/:id — forensic report generation
-│   │   │   ├── ml.py            # POST /api/ml/predict — real-time ML inference
+│   │   │   ├── ml.py            # POST /api/ml/predict — real-time ML & GNN inference
 │   │   │   └── dataset.py       # GET /api/dataset — dataset statistics
 │   │   │
 │   │   ├── data_sources/   #    Data ingestion & normalization layer
@@ -131,10 +131,13 @@ crypto_project/
 │   │   │       ├── parser.py        # Parses raw CSV rows into NormalizedTransaction objects
 │   │   │       └── mapper.py        # Maps Elliptic class codes (1/2/unknown) → labels
 │   │   │
-│   │   ├── ml/             #    Machine learning modules
+│   │   ├── ml/             #    Machine learning & Graph Neural Network modules
+│   │   │   ├── gnn_model.py     # 2-Layer BitcoinGraphSAGE architecture (PyG SAGEConv)
+│   │   │   ├── gnn_train.py     # Graph construction, temporal training, early stopping
+│   │   │   ├── gnn_predict.py   # Graph-aware inference with neighborhood message passing
 │   │   │   ├── preprocessing.py # Temporal train/val/test split of Elliptic data
 │   │   │   ├── train.py         # Trains baseline classifiers (LR, RF, GB)
-│   │   │   ├── predict.py       # Loads saved models & runs inference on feature vectors
+│   │   │   ├── predict.py       # Unified inference dispatcher (GNN + baseline models)
 │   │   │   ├── evaluate.py      # Computes precision, recall, F1, ROC-AUC, confusion matrix
 │   │   │   └── explain.py       # Feature anomaly detection (z-score signals)
 │   │   │
@@ -156,10 +159,19 @@ crypto_project/
 │   │       ├── transactions.py  # Transaction list/detail schemas
 │   │       └── graph.py         # Graph response models
 │   │
-│   └── tests/              #    Backend unit tests
+│   └── tests/              #    Backend unit & integration tests
 │       ├── test_api.py          # API endpoint tests
 │       ├── test_labels.py       # Label mapping tests
-│       └── test_risk_engine.py  # Risk scoring formula tests
+│       ├── test_risk_engine.py  # Risk scoring formula tests
+│       └── test_gnn.py          # Graph construction, temporal split, GNN inference tests
+│
+├── models/                 # ← Saved trained model checkpoints & metrics
+│   ├── gnn_model.pt             # PyTorch BitcoinGraphSAGE trained checkpoint
+│   ├── gnn_metrics.json         # Real test evaluation metrics for GNN
+│   ├── gnn_metadata.joblib      # Node index mapping & graph metadata
+│   ├── gradient_boosting.joblib # HistGradientBoosting checkpoint
+│   ├── random_forest.joblib     # RandomForestClassifier checkpoint
+│   └── logistic_regression.joblib# LogisticRegression checkpoint
 │
 ├── frontend/               # ← React + TypeScript UI
 │   ├── package.json        #    NPM dependencies & scripts
@@ -204,36 +216,57 @@ crypto_project/
 │       └── types/
 │           └── api.ts       #    TypeScript type definitions for API responses
 │
-├── models/                  # ← Saved trained ML model files (.joblib) & metrics (.json)
-│   ├── gradient_boosting.joblib         # Trained Gradient Boosting classifier
-│   ├── gradient_boosting_metrics.json   # Evaluation metrics for GB
-│   ├── random_forest.joblib             # Trained Random Forest classifier
-│   ├── random_forest_metrics.json       # Evaluation metrics for RF
-│   ├── logistic_regression.joblib       # Trained Logistic Regression classifier
-│   └── logistic_regression_metrics.json # Evaluation metrics for LR
-│
-├── scripts/                 # ← Command-line data & ML pipeline scripts
-│   ├── ingest_dataset.py    #    Reads Elliptic CSVs → scores with ML → bulk-inserts into DB
-│   ├── train_model.py       #    Trains 3 baseline models with temporal split → saves artifacts
-│   └── inspect_dataset.py   #    Prints dataset statistics (class distribution, graph properties)
-│
-└── sql/
-    └── schema.sql           # ← PostgreSQL DDL — defines all 8 database tables
+└── scripts/                 # ← Standalone utility & ETL scripts
+    ├── train_model.py       # Trains GNN, Random Forest, Gradient Boosting, or Logistic Regression
+    ├── ingest_dataset.py    # Ingests Elliptic CSV transactions and edges into database
+    └── inspect_dataset.py   # Dataset inspection & verification utility
 ```
 
----
+## 🤖 How the ML & Graph Neural Network Pipeline Works
 
-## 📊 The Dataset — Elliptic Bitcoin
+```
+  Elliptic CSVs                    Temporal Split                    Training
+┌───────────────┐   ┌───────────────────────────────┐   ┌─────────────────────────────┐
+│ features.csv  │──▶│ Timesteps 1–34  → TRAIN       │──▶│ Logistic Regression         │
+│ classes.csv   │   │ Timesteps 35–39 → VALIDATION  │   │ Random Forest               │
+│ edgelist.csv  │   │ Timesteps 40–49 → TEST        │   │ Gradient Boosting           │
+└───────────────┘   └───────────────────────────────┘   │ Graph Neural Network (GNN)  │
+                                                        └──────────────┬──────────────┘
+                                                                       │
+                     Evaluation Metrics                                │
+                    ┌───────────────────────────────┐                  │
+                    │ Precision, Recall, F1-Score    │◀─────────────────┘
+                    │ ROC-AUC, PR-AUC, Accuracy      │
+                    │ Confusion Matrix               │
+                    │ Illicit-class (Minority) focus │
+                    └───────────────────────────────┘
+```
 
-This project uses the **Elliptic Bitcoin Dataset**, a publicly available research dataset from [Elliptic](https://www.elliptic.co/) (via Kaggle). Here's what it contains:
+### Why "Temporal Split" instead of Random Split?
 
-| File | What It Contains | Size |
-|------|-----------------|------|
-| `elliptic_txs_features.csv` | **203,769 rows** × **167 columns** — Each row is a Bitcoin transaction with a `txId`, a `time_step` (1–49), and **165 numerical features** (94 local + 71 neighborhood aggregate features, all standardized). | ~600 MB |
-| `elliptic_txs_classes.csv` | **203,769 rows** — Maps each `txId` to a class: `1` = illicit, `2` = licit, `unknown` = unlabeled. Only ~23% have a known label. | ~3 MB |
-| `elliptic_txs_edgelist.csv` | **234,355 directed edges** — Each row is a `(txId1, txId2)` pair representing a Bitcoin payment flow from one transaction to another. | ~5 MB |
+In real-world fraud detection, you can't use future data to predict the past. The Elliptic dataset has **49 time steps** representing consecutive 3-hour periods. We train strictly on earlier timesteps (1–34), validate on intermediate timesteps (35–39), and test on unseen future activity (40–49) — this simulates a realistic production deployment scenario.
 
-### What the labels mean
+**Zero Graph Leakage Guarantee:** In the Elliptic dataset, all 234,355 directed edges connect transactions confirmed within the *exact same 3-hour timestep*. There are 0 cross-timestep edges. Thus, message passing during training on timesteps 1–34 has zero access to future graph topology or labels from timesteps 40–49.
+
+### The 4 Models
+
+| Model | Architecture | Input Modality | Strengths |
+|-------|--------------|----------------|-----------|
+| **Graph Neural Network (GNN)** | 2-Layer GraphSAGE (`SAGEConv`) | Graph Edges (234K) + 165 Features | Directly aggregates counterparty flows to capture multi-hop peeling chains & mule rings |
+| **Gradient Boosting** | HistGradientBoostingClassifier | 165 Tabular Features | Top tabular precision, captures complex non-linear feature interactions |
+| **Random Forest** | 100-Tree Bagged Decision Forest | 165 Tabular Features | Robust against noise, high precision, interpretable feature importances |
+| **Logistic Regression** | L2-Regularized Linear Classifier | 165 Tabular Features | Fast, linear baseline, highly interpretable coefficient weights |
+
+### Graph Neural Network (GraphSAGE) Deep Dive
+
+Unlike conventional classifiers that treat each Bitcoin transaction as an isolated tabular row, TRACE-X includes a **Graph Neural Network (GNN)** built with PyTorch and PyTorch Geometric:
+1. **Nodes & Features:** Every transaction is a node with 165 normalized features.
+2. **Connectivity:** 234,355 directed edges are converted to bidirectional connectivity for message passing, allowing representations to incorporate both funding sources (upstream) and spending dispersal (downstream).
+3. **Neighborhood Aggregation:** Two `SAGEConv` layers aggregate representations from 1-hop and 2-hop transaction neighbors:
+   $$\mathbf{h}_v^{(k)} = \text{ReLU}\left(\mathbf{W}^{(k)} \cdot \left[\mathbf{h}_v^{(k-1)} \,\|\, \text{AGG}(\{\mathbf{h}_u^{(k-1)} : u \in \mathcal{N}(v)\})\right]\right)$$
+4. **Unknown Label Preservation:** 157,205 unlabeled transactions are preserved in the graph to supply structural neighborhood context, but are strictly excluded from supervised optimization.
+5. **Class Imbalance Optimization:** Weighted CrossEntropy ($w_{\text{illicit}} \approx 7.63$) counters the ~1:8 imbalance in the training partition.
+## What the labels mean
 
 - **Class 1 (Illicit):** ~4,545 transactions confirmed to be linked to scams, malware, Ponzi schemes, ransomware, etc.
 - **Class 2 (Licit):** ~42,019 transactions confirmed to be from legitimate exchanges, wallets, mining pools, etc.

@@ -12,6 +12,7 @@ from backend.app.database import get_db
 from backend.app.models import Transaction, TransactionFeature
 from backend.app.graph.risk import calculate_neighborhood_signals
 from backend.app.ml.explain import generate_feature_signals
+from backend.app.ml.gnn_predict import predict_gnn_transaction
 
 router = APIRouter(prefix="", tags=["Transactions"])
 
@@ -196,16 +197,38 @@ def get_transaction_intelligence(transaction_id: int, db: Session = Depends(get_
             "severity": "low"
         })
 
+    # 4. GNN Graph-Aware Inference
+    gnn_pred, gnn_prob, gnn_meta = predict_gnn_transaction(
+        transaction_id=transaction_id,
+        features=feats if feats else None,
+        db_session=db
+    )
+    if gnn_pred != "UNKNOWN":
+        ml_signals.append({
+            "name": "Graph Neural Network (GraphSAGE) Relational Score",
+            "value": f"{gnn_pred} ({gnn_prob * 100:.1f}% illicit prob)",
+            "description": f"GNN aggregated 2-hop graph connectivity across {graph_info['total_neighbors']} direct counterparties ({gnn_meta.get('nodes_in_subgraph', 1)} neighborhood nodes) using message passing.",
+            "severity": "critical" if gnn_prob >= 0.75 else "high" if gnn_prob >= 0.5 else "low"
+        })
+
     return {
         "transaction_id": transaction_id,
         "ml_signals": ml_signals,
         "graph_signals": graph_info["graph_signals"],
         "feature_signals": feature_signals,
+        "gnn_prediction": {
+            "prediction": gnn_pred,
+            "illicit_probability": round(gnn_prob, 4),
+            "licit_probability": round(1.0 - gnn_prob, 4),
+            "metadata": gnn_meta
+        },
         "risk_summary": {
             "risk_score": tx.risk_score or 0,
             "risk_level": tx.risk_level or "LOW",
             "known_label": tx.known_label,
             "prediction": tx.prediction,
+            "gnn_prediction": gnn_pred,
+            "gnn_probability": round(gnn_prob, 4),
             "total_neighbors": graph_info["total_neighbors"],
             "known_illicit_neighbors": graph_info["known_illicit_neighbors"],
             "suspicious_neighbors_count": graph_info["suspicious_neighbors_count"]
@@ -247,6 +270,21 @@ def get_transaction_evidence(transaction_id: int, db: Session = Depends(get_db))
             "observation": f"Evaluated illicit probability of {prob * 100:.2f}%.",
             "forensic_significance": "Algorithm-derived structural and behavioral anomaly score.",
             "confidence": f"{max(prob, 1 - prob) * 100:.1f}%"
+        })
+
+    # GNN Relational Evidence
+    gnn_pred, gnn_prob, gnn_meta = predict_gnn_transaction(
+        transaction_id=transaction_id,
+        features=None,
+        db_session=db
+    )
+    if gnn_pred != "UNKNOWN":
+        evidence.append({
+            "category": "Graph Neural Network",
+            "indicator": f"GraphSAGE Prediction: {gnn_pred}",
+            "observation": f"Aggregated 2-hop transaction neighborhood ({gnn_meta.get('nodes_in_subgraph', 1)} nodes, {gnn_meta.get('edges_in_subgraph', 0)} edges). Evaluated illicit probability: {gnn_prob * 100:.2f}%.",
+            "forensic_significance": "Deep relational graph inference over transaction edges and topological money flow.",
+            "confidence": f"{max(gnn_prob, 1 - gnn_prob) * 100:.1f}%"
         })
 
     if graph_info["known_illicit_neighbors"] > 0:

@@ -16,6 +16,10 @@ def load_model(model_name: str = "gradient_boosting"):
     """Loads and caches trained model artifact."""
     global _loaded_models
     normalized = model_name.lower().replace(" ", "_")
+    if normalized in ("gnn", "graph_neural_network", "graphsage"):
+        from backend.app.ml.gnn_predict import load_gnn_model
+        return load_gnn_model()
+
     if normalized in _loaded_models:
         return _loaded_models[normalized]
 
@@ -36,12 +40,25 @@ def load_model(model_name: str = "gradient_boosting"):
 
 def predict_transaction(
     features: List[float],
-    model_name: str = "gradient_boosting"
+    model_name: str = "gradient_boosting",
+    transaction_id: Optional[int] = None,
+    db_session: Any = None
 ) -> Tuple[str, float]:
     """
     Predicts class and probability for a given 165-feature vector.
+    Supports GNN graph-aware inference as well as tabular baseline models.
     Returns ('ILLICIT' | 'LICIT', probability_of_illicit).
     """
+    normalized = (model_name or "gradient_boosting").lower().replace(" ", "_")
+    if normalized in ("gnn", "graph_neural_network", "graphsage"):
+        from backend.app.ml.gnn_predict import predict_gnn_transaction
+        pred, prob, _ = predict_gnn_transaction(
+            transaction_id=transaction_id,
+            features=features,
+            db_session=db_session
+        )
+        return pred, prob
+
     model = load_model(model_name)
     if model is None:
         # If no model trained yet, return fallback prediction based on standardized anomaly indicators

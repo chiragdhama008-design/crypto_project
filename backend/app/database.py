@@ -83,6 +83,22 @@ def init_db():
         initialize_schema()
 
     except Exception as e:
+        if is_postgres:
+            print(f"[Database] Primary PostgreSQL connection failed ({e}). Falling back to local developer SQLite storage...")
+            try:
+                db_url = "sqlite:///./tracex_dev.db"
+                _engine = create_engine(db_url, pool_pre_ping=True, connect_args={"check_same_thread": False})
+                _SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=_engine)
+                with _engine.connect() as conn:
+                    conn.execute(text("SELECT 1"))
+                _db_status["connected"] = True
+                _db_status["provider"] = "Local Developer Storage"
+                _db_status["error"] = None
+                print(f"[Database] Successfully connected to fallback {_db_status['provider']}")
+                initialize_schema()
+                return
+            except Exception as fallback_e:
+                print(f"[Database] Fallback storage failed: {fallback_e}")
         _db_status["connected"] = False
         _db_status["provider"] = "None"
         _db_status["error"] = str(e)
@@ -100,8 +116,7 @@ def initialize_schema():
         schema_file = "sql/schema.sql"
 
     try:
-        db_url = get_database_url()
-        is_postgres = db_url.startswith("postgresql")
+        is_postgres = (_db_status.get("provider") == "Supabase PostgreSQL")
 
         if is_postgres and os.path.exists(schema_file):
             with open(schema_file, "r", encoding="utf-8") as f:
