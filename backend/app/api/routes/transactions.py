@@ -121,13 +121,26 @@ def get_transaction_detail(transaction_id: int, db: Session = Depends(get_db)):
 @router.get("/transactions/{transaction_id}/features")
 def get_transaction_features(transaction_id: int, db: Session = Depends(get_db)):
     feat_record = db.query(TransactionFeature).filter(TransactionFeature.transaction_id == transaction_id).first()
-    if not feat_record or not feat_record.features:
-        raise HTTPException(status_code=404, detail="Features not found for this transaction")
+    feats = []
+    if feat_record and feat_record.features:
+        try:
+            feats = json.loads(feat_record.features)
+        except Exception:
+            feats = []
+    else:
+        # Fall back to streaming lookup directly from local dataset CSV
+        try:
+            from backend.app.data_sources.elliptic.loader import EllipticDataSource
+            from backend.app.config import settings
+            loader = EllipticDataSource(settings.DATASET_PATH)
+            raw_feats = loader.get_transaction_features(transaction_id)
+            if raw_feats:
+                feats = raw_feats
+        except Exception:
+            pass
 
-    try:
-        feats = json.loads(feat_record.features)
-    except Exception:
-        feats = []
+    if not feats:
+        raise HTTPException(status_code=404, detail="Features not found for this transaction")
 
     local_feats = []
     agg_feats = []
@@ -168,6 +181,14 @@ def get_transaction_intelligence(transaction_id: int, db: Session = Depends(get_
     if feat_record and feat_record.features:
         try:
             feats = json.loads(feat_record.features)
+        except Exception:
+            pass
+    if not feats:
+        try:
+            from backend.app.data_sources.elliptic.loader import EllipticDataSource
+            from backend.app.config import settings
+            loader = EllipticDataSource(settings.DATASET_PATH)
+            feats = loader.get_transaction_features(transaction_id) or []
         except Exception:
             pass
     feature_signals = generate_feature_signals(feats) if feats else []

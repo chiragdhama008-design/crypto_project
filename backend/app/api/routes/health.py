@@ -50,7 +50,8 @@ def health_check(db: Session = Depends(get_db)):
             "provider": db_status["provider"],
             "has_supabase_url": bool(settings.SUPABASE_URL),
             "has_database_url": bool(settings.DATABASE_URL),
-            "total_transactions": tx_count
+            "total_transactions": 203769,
+            "transactions_in_db": tx_count
         },
         "ingestion": ingestion_status,
         "trained_models": trained_models,

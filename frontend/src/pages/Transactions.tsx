@@ -78,7 +78,7 @@ export const Transactions: React.FC = () => {
               Transaction Problem Set
             </h1>
             <span className="text-[11px] font-mono bg-[#333333] text-[#ffa116] px-2 py-0.5 rounded border border-[#444444]">
-              {total.toLocaleString()} transactions
+              {total.toLocaleString()} indexed in DB / 203,769 total dataset
             </span>
           </div>
           <p className="text-xs text-[#8c8c8c] mt-0.5 font-mono">
