@@ -17,8 +17,6 @@ dist/
 *.egg-info/
 
 # Large binaries & model artifacts
-models/*.joblib
-models/*.pt
 models/*.pkl
 
 # Node / Frontend

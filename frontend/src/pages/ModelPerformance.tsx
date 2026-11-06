@@ -453,6 +453,20 @@ export const ModelPerformance: React.FC = () => {
                   <div className="text-[9px] text-[#8c8c8c]">Caught Illicit</div>
                 </div>
               </div>
+
+              {/* Explanatory callout for why the total is 11,184 */}
+              <div className="text-[10px] bg-[#1a1a1a] p-2 rounded border border-[#333333] space-y-1 font-mono">
+                <div className="flex justify-between items-center text-[#eff1f6] font-semibold border-b border-[#2a2a2a] pb-1">
+                  <span>Held-Out Test Set (Steps 40–49):</span>
+                  <span className="text-[#ffa116]">
+                    {(metrics.confusion_matrix.true_negative + metrics.confusion_matrix.false_positive + metrics.confusion_matrix.false_negative + metrics.confusion_matrix.true_positive).toLocaleString()} txs
+                  </span>
+                </div>
+                <div className="text-[9px] text-[#8c8c8c] leading-relaxed">
+                  <div>• <strong>157,205 Unlabeled txs</strong> excluded (ground truth unknown).</div>
+                  <div>• <strong>35,380 Earlier labeled txs</strong> kept in Train (1–34) &amp; Val (35–39) sets to prevent data leakage.</div>
+                </div>
+              </div>
             </div>
 
             {/* Feature Importances */}
