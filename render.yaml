@@ -31,8 +31,7 @@ services:
   # =============================================================
   - type: web
     name: tracex-frontend
-    runtime: static
-    plan: free
+    env: static
     buildCommand: "cd frontend && npm install && npm run build"
     staticPublishPath: "./frontend/dist"
     routes:
@@ -44,4 +43,4 @@ services:
         fromService:
           type: web
           name: tracex-backend
-          property: host
+          property: url
