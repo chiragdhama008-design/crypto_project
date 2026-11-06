@@ -11,7 +11,9 @@ import {
   SystemHealth
 } from '../types/api';
 
-const API_BASE = (import.meta.env.VITE_API_URL ? `${import.meta.env.VITE_API_URL}/api` : '/api');
+const rawApiUrl = import.meta.env.VITE_API_URL;
+const normalizedBase = rawApiUrl ? (rawApiUrl.startsWith('http') ? rawApiUrl : `https://${rawApiUrl}`) : '';
+const API_BASE = normalizedBase ? `${normalizedBase}/api` : '/api';
 
 async function fetchJson<T>(url: string, options?: RequestInit): Promise<T> {
   const res = await fetch(url, {
