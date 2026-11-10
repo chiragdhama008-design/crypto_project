@@ -10,7 +10,13 @@ import {
   Cpu,
   AlertTriangle,
   FileSearch,
-  Terminal
+  Terminal,
+  Zap,
+  RotateCw,
+  Radio,
+  SlidersHorizontal,
+  X,
+  CheckCircle2
 } from 'lucide-react';
 import {
   AreaChart,
@@ -42,6 +48,47 @@ export const Overview: React.FC = () => {
       .catch((err) => setError(err.message))
       .finally(() => setLoading(false));
   }, []);
+
+  // On-Demand 50-Transaction Batch Ingestion Stream
+  const [streamActive, setStreamActive] = useState<boolean>(false);
+  const [streamLoading, setStreamLoading] = useState<boolean>(false);
+  const [batchTransactions, setBatchTransactions] = useState<any[]>([]);
+  const [batchPage, setBatchPage] = useState<number>(1);
+  const [batchTotal, setBatchTotal] = useState<number>(0);
+  const [filterType, setFilterType] = useState<'all' | 'critical' | 'illicit' | 'licit'>('all');
+
+  const handleTriggerStream = async (page: number = 1) => {
+    setStreamLoading(true);
+    setStreamActive(true);
+    try {
+      const res = await api.getTransactions({ page, limit: 50 });
+      setBatchTransactions(res.transactions);
+      setBatchPage(page);
+      setBatchTotal(res.total);
+    } catch (err) {
+      console.error('Failed to stream 50 transactions:', err);
+    } finally {
+      setTimeout(() => setStreamLoading(false), 400);
+    }
+  };
+
+  const handleResetStream = () => {
+    setStreamActive(false);
+    setBatchTransactions([]);
+    setBatchPage(1);
+    setFilterType('all');
+  };
+
+  const displayedBatch = batchTransactions.filter((tx) => {
+    if (filterType === 'critical') return tx.risk_level === 'CRITICAL';
+    if (filterType === 'illicit') return tx.known_label === 'ILLICIT' || tx.prediction === 'ILLICIT';
+    if (filterType === 'licit') return tx.known_label === 'LICIT' || tx.prediction === 'LICIT';
+    return true;
+  });
+
+  const criticalCount = batchTransactions.filter((t) => t.risk_level === 'CRITICAL').length;
+  const illicitCount = batchTransactions.filter((t) => t.known_label === 'ILLICIT' || t.prediction === 'ILLICIT').length;
+  const licitCount = batchTransactions.filter((t) => t.known_label === 'LICIT' || t.prediction === 'LICIT').length;
 
   if (loading) {
     return (
@@ -267,93 +314,268 @@ export const Overview: React.FC = () => {
         </div>
       </div>
 
-      {/* 3. High-Risk Transactions Table */}
+      {/* 3. On-Demand 50-Transaction Batch Stream & High-Risk Console */}
       <div className="bg-[#262626] rounded border border-[#333333] shadow-xs overflow-hidden">
-        <div className="px-4 py-2.5 border-b border-[#333333] flex items-center justify-between bg-[#222222]">
-          <div>
-            <h2 className="text-xs font-bold uppercase tracking-wider text-[#eff1f6] font-mono">
-              High-Risk Priority Queue
-            </h2>
+        {/* Header Bar */}
+        <div className="px-4 py-3 border-b border-[#333333] flex flex-col md:flex-row md:items-center justify-between gap-3 bg-[#222222]">
+          <div className="space-y-0.5">
+            <div className="flex items-center space-x-2">
+              <span className={`w-2 h-2 rounded-full ${streamActive ? 'bg-[#00b8a3] animate-pulse' : 'bg-[#ffa116]'}`} />
+              <h2 className="text-xs font-bold uppercase tracking-wider text-[#eff1f6] font-mono flex items-center space-x-1.5">
+                <span>{streamActive ? `Live On-Chain Stream (Batch #${batchPage} — 50 Txs)` : 'On-Demand Mempool Stream (Standby)'}</span>
+              </h2>
+              <span className="text-[10px] font-mono px-2 py-0.5 rounded bg-[#1e1e1e] border border-[#333333] text-[#8c8c8c]">
+                {streamActive ? `${displayedBatch.length} Filtered / 50 Batch` : 'Clean View Active'}
+              </span>
+            </div>
             <p className="text-[10px] text-[#8c8c8c] font-mono">
-              Transactions flagged with critical anomaly or illicit neighborhood exposure
+              {streamActive
+                ? '50 on-chain transactions ingested and ML-classified across 165 graph features.'
+                : 'Transactions held in standby to keep the dashboard uncluttered. Trigger the scan to stream 50 rows.'}
             </p>
           </div>
-          <button
-            onClick={() => navigate('/risk')}
-            className="text-xs text-[#ffa116] hover:text-[#ffb84d] font-mono font-semibold flex items-center space-x-1"
-          >
-            <span>View All Alerts ({data.risk_distribution.CRITICAL + data.risk_distribution.HIGH})</span>
-            <ArrowRight className="w-3.5 h-3.5" />
-          </button>
+
+          <div className="flex items-center flex-wrap gap-2">
+            {!streamActive ? (
+              /* Professional Header Action Button */
+              <button
+                onClick={() => handleTriggerStream(1)}
+                className="px-3.5 py-1.5 bg-[#ffa116] hover:bg-[#ffb84d] text-[#1a1a1a] font-mono font-bold text-xs rounded transition-colors flex items-center space-x-1.5 shadow-xs cursor-pointer active:translate-y-0.5"
+              >
+                <Zap className="w-3.5 h-3.5 fill-current" />
+                <span>Stream 50 Txs</span>
+              </button>
+            ) : (
+              /* Active Stream Controls: Filters & Next Batch */
+              <>
+                <div className="flex items-center space-x-1 bg-[#1e1e1e] p-1 rounded border border-[#333333] text-[10px] font-mono">
+                  <button
+                    onClick={() => setFilterType('all')}
+                    className={`px-2 py-0.5 rounded transition-colors ${
+                      filterType === 'all' ? 'bg-[#333333] text-[#eff1f6] font-bold' : 'text-[#8c8c8c] hover:text-[#eff1f6]'
+                    }`}
+                  >
+                    All ({batchTransactions.length})
+                  </button>
+                  <button
+                    onClick={() => setFilterType('critical')}
+                    className={`px-2 py-0.5 rounded transition-colors ${
+                      filterType === 'critical' ? 'bg-[#ef4743]/30 text-[#ef4743] font-bold' : 'text-[#8c8c8c] hover:text-[#ef4743]'
+                    }`}
+                  >
+                    Critical ({criticalCount})
+                  </button>
+                  <button
+                    onClick={() => setFilterType('illicit')}
+                    className={`px-2 py-0.5 rounded transition-colors ${
+                      filterType === 'illicit' ? 'bg-[#ffa116]/30 text-[#ffa116] font-bold' : 'text-[#8c8c8c] hover:text-[#ffa116]'
+                    }`}
+                  >
+                    Illicit ({illicitCount})
+                  </button>
+                  <button
+                    onClick={() => setFilterType('licit')}
+                    className={`px-2 py-0.5 rounded transition-colors ${
+                      filterType === 'licit' ? 'bg-[#00b8a3]/30 text-[#00b8a3] font-bold' : 'text-[#8c8c8c] hover:text-[#00b8a3]'
+                    }`}
+                  >
+                    Licit ({licitCount})
+                  </button>
+                </div>
+
+                <button
+                  onClick={() => handleTriggerStream(batchPage + 1)}
+                  disabled={streamLoading}
+                  className="px-3 py-1.5 bg-[#2a2a2a] hover:bg-[#333333] border border-[#3e3e3e] text-[#eff1f6] rounded text-xs font-mono font-medium flex items-center space-x-1.5 transition-colors"
+                >
+                  <RotateCw className={`w-3.5 h-3.5 text-[#ffa116] ${streamLoading ? 'animate-spin' : ''}`} />
+                  <span>Next 50 (Batch #{batchPage + 1})</span>
+                </button>
+
+                <button
+                  onClick={handleResetStream}
+                  className="px-2.5 py-1.5 bg-[#2a2a2a] hover:bg-[#ef4743]/20 border border-[#3e3e3e] hover:border-[#ef4743]/40 text-[#8c8c8c] hover:text-[#ef4743] rounded text-xs font-mono transition-colors flex items-center space-x-1"
+                  title="Return to Clean Standby View"
+                >
+                  <X className="w-3.5 h-3.5" />
+                  <span>Standby</span>
+                </button>
+              </>
+            )}
+          </div>
         </div>
 
-        <div className="overflow-x-auto">
-          <table className="leetcode-table">
-            <thead>
-              <tr>
-                <th>Tx ID</th>
-                <th>Step</th>
-                <th>Ground Truth</th>
-                <th>Prediction</th>
-                <th>Probability</th>
-                <th>Risk Score</th>
-                <th>Degree</th>
-                <th className="text-right">Action</th>
-              </tr>
-            </thead>
-            <tbody>
-              {data.high_risk_preview.length === 0 ? (
+        {/* Body Content */}
+        {!streamActive ? (
+          /* Standby State: Clean Professional Telemetry Console */
+          <div className="p-8 text-center bg-[#1e1e1e] border-t border-[#333333] font-mono">
+            <div className="max-w-lg mx-auto space-y-4">
+              <div className="inline-flex items-center space-x-2 px-2.5 py-1 bg-[#262626] border border-[#333333] rounded text-[11px] text-[#8c8c8c]">
+                <span className="w-1.5 h-1.5 rounded-full bg-[#ffa116]" />
+                <span>On-Demand Ingestion Mode Active</span>
+              </div>
+
+              <div className="space-y-1">
+                <h3 className="text-sm font-bold uppercase tracking-wider text-[#eff1f6]">
+                  Mempool Stream Standby
+                </h3>
+                <p className="text-xs text-[#8c8c8c] leading-relaxed">
+                  Transaction rows are held on standby to keep the executive dashboard fast and focused. Stream a live batch of <strong>50 Bitcoin transactions</strong> to run feature extraction and ML risk scoring.
+                </p>
+              </div>
+
+              {/* Clean Action Buttons */}
+              <div className="pt-2 flex flex-col sm:flex-row items-center justify-center gap-2.5">
+                <button
+                  onClick={() => handleTriggerStream(1)}
+                  className="w-full sm:w-auto px-4 py-2 bg-[#ffa116] hover:bg-[#ffb84d] text-[#1a1a1a] font-mono font-bold text-xs rounded transition-colors flex items-center justify-center space-x-2 shadow-xs cursor-pointer active:translate-y-0.5"
+                >
+                  <Zap className="w-3.5 h-3.5 fill-current" />
+                  <span>Stream 50 On-Chain Txs</span>
+                </button>
+
+                <button
+                  onClick={() => navigate('/transactions')}
+                  className="w-full sm:w-auto px-4 py-2 bg-[#262626] hover:bg-[#2e2e2e] border border-[#3e3e3e] text-[#d1d5db] font-mono text-xs font-medium rounded transition-colors flex items-center justify-center space-x-1.5"
+                >
+                  <span>Explore Full Dataset</span>
+                  <ArrowRight className="w-3.5 h-3.5 text-[#8c8c8c]" />
+                </button>
+              </div>
+
+              <div className="pt-2 flex flex-wrap items-center justify-center gap-3 text-[10px] text-[#6b7280]">
+                <span>50 Txs / Batch</span>
+                <span>•</span>
+                <span>165 Graph &amp; Temporal Features</span>
+                <span>•</span>
+                <span>Gradient Boosting + GNN Pipeline</span>
+              </div>
+            </div>
+          </div>
+        ) : streamLoading ? (
+          /* Scanning / Ingestion Animation */
+          <div className="p-12 text-center bg-[#1e1e1e] space-y-4 font-mono">
+            <div className="inline-flex items-center justify-center p-3.5 bg-[#262626] border border-[#ffa116] rounded-full animate-spin">
+              <RotateCw className="w-6 h-6 text-[#ffa116]" />
+            </div>
+            <div className="space-y-1">
+              <div className="text-xs font-bold text-[#eff1f6] uppercase tracking-wider animate-pulse">
+                Streaming Batch #{batchPage} (50 Transactions)...
+              </div>
+              <p className="text-[10px] text-[#8c8c8c]">
+                Extracting 165 topological features • Scoring with Gradient Boosting &amp; GraphSAGE
+              </p>
+            </div>
+            <div className="w-64 mx-auto bg-[#262626] h-1.5 rounded-full overflow-hidden border border-[#333333]">
+              <div className="h-full bg-gradient-to-r from-[#ffa116] to-[#ef4743] animate-[pulse_1s_infinite] w-full" />
+            </div>
+          </div>
+        ) : (
+          /* Stream Active: The 50 Rows Table */
+          <div className="overflow-x-auto">
+            <table className="leetcode-table">
+              <thead>
                 <tr>
-                  <td colSpan={8} className="text-center py-6 text-[#8c8c8c] font-mono text-xs">
-                    No high-risk transactions recorded.
-                  </td>
+                  <th>#</th>
+                  <th>Tx ID</th>
+                  <th>Step</th>
+                  <th>Ground Truth</th>
+                  <th>ML Prediction</th>
+                  <th>Probability P(Illicit)</th>
+                  <th>Risk Score</th>
+                  <th>Graph Degree</th>
+                  <th className="text-right">Action</th>
                 </tr>
-              ) : (
-                data.high_risk_preview.map((tx) => (
-                  <tr
-                    key={tx.transaction_id}
-                    onClick={() => navigate(`/transactions/${tx.transaction_id}`)}
-                    className="cursor-pointer hover:bg-[#2e2e2e] transition-colors"
-                  >
-                    <td className="font-mono font-bold text-[#eff1f6] hover:text-[#ffa116]">
-                      #{tx.transaction_id}
-                    </td>
-                    <td className="font-mono text-[#8c8c8c]">
-                      {tx.time_step}
-                    </td>
-                    <td>
-                      <LabelBadge label={tx.known_label} />
-                    </td>
-                    <td>
-                      {tx.prediction ? (
-                        <LabelBadge label={tx.prediction} isPrediction />
-                      ) : (
-                        <span className="text-[#6b7280] text-xs font-mono">—</span>
-                      )}
-                    </td>
-                    <td className="font-mono text-[#d1d5db]">
-                      {tx.prediction_probability !== null && tx.prediction_probability !== undefined
-                        ? `${(tx.prediction_probability * 100).toFixed(1)}%`
-                        : '—'}
-                    </td>
-                    <td>
-                      <RiskBadge score={tx.risk_score} level={tx.risk_level} />
-                    </td>
-                    <td className="font-mono text-[#8c8c8c] text-[11px]">
-                      {tx.total_degree} edges ({tx.in_degree}↓ {tx.out_degree}↑)
-                    </td>
-                    <td className="text-right">
-                      <span className="text-xs text-[#ffa116] hover:text-[#ffb84d] font-mono font-medium inline-flex items-center space-x-1">
-                        <span>Investigate</span>
-                        <ArrowRight className="w-3 h-3" />
-                      </span>
+              </thead>
+              <tbody>
+                {displayedBatch.length === 0 ? (
+                  <tr>
+                    <td colSpan={9} className="text-center py-8 text-[#8c8c8c] font-mono text-xs">
+                      No transactions match the selected filter ({filterType}).
                     </td>
                   </tr>
-                ))
-              )}
-            </tbody>
-          </table>
-        </div>
+                ) : (
+                  displayedBatch.map((tx, idx) => (
+                    <tr
+                      key={tx.transaction_id || idx}
+                      onClick={() => navigate(`/transactions/${tx.transaction_id}`)}
+                      className="cursor-pointer hover:bg-[#2e2e2e] transition-colors"
+                    >
+                      <td className="font-mono text-[#6b7280] text-[10px]">
+                        {(batchPage - 1) * 50 + idx + 1}
+                      </td>
+                      <td className="font-mono font-bold text-[#eff1f6] hover:text-[#ffa116]">
+                        #{tx.transaction_id}
+                      </td>
+                      <td className="font-mono text-[#8c8c8c]">
+                        Step {tx.time_step}
+                      </td>
+                      <td>
+                        <LabelBadge label={tx.known_label} />
+                      </td>
+                      <td>
+                        {tx.prediction ? (
+                          <LabelBadge label={tx.prediction} isPrediction />
+                        ) : (
+                          <span className="text-[#6b7280] text-xs font-mono">—</span>
+                        )}
+                      </td>
+                      <td className="font-mono text-[#d1d5db]">
+                        {tx.prediction_probability !== null && tx.prediction_probability !== undefined ? (
+                          <div className="flex items-center space-x-1.5">
+                            <span className={tx.prediction_probability >= 0.5 ? 'text-[#ef4743] font-bold' : 'text-[#8c8c8c]'}>
+                              {(tx.prediction_probability * 100).toFixed(1)}%
+                            </span>
+                            <div className="w-10 bg-[#1e1e1e] h-1 rounded-full overflow-hidden hidden sm:block">
+                              <div
+                                className={`h-1 rounded-full ${
+                                  tx.prediction_probability >= 0.5 ? 'bg-[#ef4743]' : 'bg-[#00b8a3]'
+                                }`}
+                                style={{ width: `${Math.max(tx.prediction_probability * 100, 4)}%` }}
+                              />
+                            </div>
+                          </div>
+                        ) : (
+                          '—'
+                        )}
+                      </td>
+                      <td>
+                        <RiskBadge score={tx.risk_score} level={tx.risk_level} />
+                      </td>
+                      <td className="font-mono text-[#8c8c8c] text-[11px]">
+                        {tx.total_degree} edges ({tx.in_degree}↓ {tx.out_degree}↑)
+                      </td>
+                      <td className="text-right">
+                        <span className="text-xs text-[#ffa116] hover:text-[#ffb84d] font-mono font-medium inline-flex items-center space-x-1">
+                          <span>Investigate</span>
+                          <ArrowRight className="w-3 h-3" />
+                        </span>
+                      </td>
+                    </tr>
+                  ))
+                )}
+              </tbody>
+            </table>
+
+            {/* Batch Stream Footer */}
+            <div className="px-4 py-2.5 bg-[#1f1f1f] border-t border-[#333333] flex flex-col sm:flex-row items-center justify-between text-[11px] font-mono text-[#8c8c8c] gap-2">
+              <div className="flex items-center space-x-2">
+                <span>Batch #{batchPage} (50 Txs)</span>
+                <span>•</span>
+                <span>Total Available: {batchTotal.toLocaleString()} Txs</span>
+              </div>
+              <div className="flex items-center space-x-3">
+                <button
+                  onClick={() => handleTriggerStream(batchPage + 1)}
+                  disabled={streamLoading}
+                  className="text-[#ffa116] hover:underline font-bold flex items-center space-x-1"
+                >
+                  <span>Fetch Next 50 Txs →</span>
+                </button>
+              </div>
+            </div>
+          </div>
+        )}
       </div>
     </div>
   );
