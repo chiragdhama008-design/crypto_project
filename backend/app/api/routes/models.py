@@ -29,6 +29,85 @@ def sanitize_floats(obj):
 
 router = APIRouter(prefix="/models", tags=["Models"])
 MODEL_CACHE_DIR = Path("models")
+UNSEEN_BENCHMARK_FILE = Path(__file__).resolve().parent.parent.parent / "data_sources" / "unseen_20_transactions.json"
+
+
+@router.get("/unseen-benchmark")
+def get_unseen_benchmark(model_name: str = "gradient_boosting"):
+    if not UNSEEN_BENCHMARK_FILE.exists():
+        raise HTTPException(status_code=404, detail="Unseen benchmark dataset not found.")
+
+    try:
+        with open(UNSEEN_BENCHMARK_FILE, "r", encoding="utf-8") as f:
+            records = json.load(f)
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Failed to read benchmark file: {e}")
+
+    norm_model = (model_name or "gradient_boosting").lower().replace(" ", "_")
+    if norm_model not in ("gradient_boosting", "random_forest", "logistic_regression", "gnn"):
+        norm_model = "gradient_boosting"
+
+    results = []
+    correct_count = 0
+    total_count = len(records)
+    illicit_hits = 0
+    licit_hits = 0
+    total_illicit = 0
+    total_licit = 0
+
+    for r in records:
+        gt = r["ground_truth"]
+        if gt == "ILLICIT":
+            total_illicit += 1
+        else:
+            total_licit += 1
+
+        pred_info = r.get("predictions", {}).get(norm_model, {})
+        pred = pred_info.get("prediction", "UNKNOWN")
+        prob = pred_info.get("probability", 0.0)
+        match = (pred == gt)
+
+        if match:
+            correct_count += 1
+            if gt == "ILLICIT":
+                illicit_hits += 1
+            else:
+                licit_hits += 1
+
+        # Calculate composite risk score
+        if pred == "ILLICIT":
+            risk_score = max(int(prob * 100), 75)
+            risk_level = "CRITICAL" if risk_score >= 85 else "HIGH"
+        else:
+            risk_score = min(int(prob * 100), 30)
+            risk_level = "LOW"
+
+        results.append({
+            "transaction_id": r["transaction_id"],
+            "time_step": r["time_step"],
+            "ground_truth": gt,
+            "scenario": r.get("scenario", "Unseen Bitcoin Flow"),
+            "prediction": pred,
+            "probability": prob,
+            "risk_score": risk_score,
+            "risk_level": risk_level,
+            "match": match
+        })
+
+    accuracy = round(correct_count / total_count, 4) if total_count > 0 else 0.0
+
+    return {
+        "dataset_name": "Unseen 20-Transaction Test Bench (Timesteps 40–49)",
+        "model_name": norm_model.replace("_", " ").title(),
+        "total_evaluated": total_count,
+        "correct_predictions": correct_count,
+        "accuracy": accuracy,
+        "accuracy_pct": f"{accuracy * 100:.1f}%",
+        "illicit_recall": f"{illicit_hits}/{total_illicit} ({illicit_hits/total_illicit*100:.1f}%)" if total_illicit else "0%",
+        "licit_precision": f"{licit_hits}/{total_licit} ({licit_hits/total_licit*100:.1f}%)" if total_licit else "0%",
+        "transactions": results
+    }
+
 
 
 @router.get("")

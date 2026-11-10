@@ -112,6 +112,9 @@ export const api = {
 
   getModelMetrics: (modelName: string) => fetchJson<ModelMetrics>(`${API_BASE}/models/${modelName}/metrics`),
 
+  getUnseenBenchmark: (modelName?: string) =>
+    fetchJson<any>(`${API_BASE}/models/unseen-benchmark?model_name=${modelName || 'gradient_boosting'}`),
+
   // Analytics
   getAnalyticsOverview: () => fetchJson<any>(`${API_BASE}/analytics/overview`),
   getTimeSeries: () => fetchJson<any[]>(`${API_BASE}/analytics/time-series`),
