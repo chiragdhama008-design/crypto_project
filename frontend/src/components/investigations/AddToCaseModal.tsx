@@ -12,11 +12,11 @@ interface AddToCaseModalProps {
   onSuccess?: () => void;
 }
 
-export const AddToCaseModal: React.FC<AddToCaseModalProps> = ({
+const AddToCaseContent: React.FC<Omit<AddToCaseModalProps, 'isOpen'> & { onSubmittingChange: (submitting: boolean) => void }> = ({
   transactionId,
-  isOpen,
   onClose,
   onSuccess,
+  onSubmittingChange,
 }) => {
   const [cases, setCases] = useState<InvestigationCase[]>([]);
   const [selectedCaseId, setSelectedCaseId] = useState<number | null>(null);
@@ -34,30 +34,16 @@ export const AddToCaseModal: React.FC<AddToCaseModalProps> = ({
   const submissionLock = useRef(false);
   const lifecycle = useRef(0);
 
-  useEffect(() => {
+  useEffect(() => () => {
     lifecycle.current += 1;
     submissionLock.current = false;
-    if (isOpen) {
-      setError(null);
-      setSuccessMsg(null);
-      setSavedCase(null);
-      setSelectedCaseId(null);
-      setCases([]);
-      setNote('');
-      setIsCreatingNew(false);
-      setNewCaseName('');
-      setNewCaseDesc('');
-      setSubmitting(false);
-    }
-    return () => { lifecycle.current += 1; };
-  }, [isOpen, transactionId]);
+    onSubmittingChange(false);
+  }, [onSubmittingChange]);
 
   useEffect(() => {
-    if (!isOpen) return;
     let cancelled = false;
-    setCasesLoading(true);
-    setCasesError(null);
-    api.getCases()
+    const controller = new AbortController();
+    api.getCases(controller.signal)
       .then((data) => {
         if (cancelled) return;
         setCases(data);
@@ -67,12 +53,11 @@ export const AddToCaseModal: React.FC<AddToCaseModalProps> = ({
         if (!cancelled) setCasesError(err instanceof Error ? err.message : 'The case list could not be loaded.');
       })
       .finally(() => { if (!cancelled) setCasesLoading(false); });
-    return () => { cancelled = true; };
-  }, [isOpen, transactionId, casesReload]);
-
-  const closeModal = () => {
-    if (!submissionLock.current) onClose();
-  };
+    return () => {
+      cancelled = true;
+      controller.abort();
+    };
+  }, [casesReload]);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -96,6 +81,7 @@ export const AddToCaseModal: React.FC<AddToCaseModalProps> = ({
     }
     submissionLock.current = true;
     setSubmitting(true);
+    onSubmittingChange(true);
     const request = lifecycle.current;
     let confirmedCase = savedCase;
     let confirmed = false;
@@ -118,7 +104,7 @@ export const AddToCaseModal: React.FC<AddToCaseModalProps> = ({
       if (isCreatingNew && note.trim()) {
         const savedNote = await api.addNoteToCase(confirmedCase.id, note.trim(), transactionId);
         if (request !== lifecycle.current) return;
-        if (!savedNote || savedNote.case_id !== confirmedCase.id || !Number.isSafeInteger(savedNote.id)) {
+        if (!savedNote || savedNote.case_id !== confirmedCase.id || !Number.isSafeInteger(savedNote.id) || savedNote.id <= 0) {
           throw new Error('The server did not confirm the investigator note. Check the case notes before retrying.');
         }
       }
@@ -131,13 +117,14 @@ export const AddToCaseModal: React.FC<AddToCaseModalProps> = ({
       if (request === lifecycle.current) {
         const message = err instanceof Error ? err.message : 'The request could not be completed.';
         setError(confirmedCase && isCreatingNew
-          ? `The case and transaction are saved, but the note could not be saved. ${message} Retrying here only saves the note.`
+          ? `The case and transaction are saved, but the note save could not be confirmed. ${message} Retrying here only saves the note.`
           : message);
       }
     } finally {
       if (request === lifecycle.current) {
         submissionLock.current = false;
         setSubmitting(false);
+        onSubmittingChange(false);
       }
     }
     if (confirmed && request === lifecycle.current) onSuccess?.();
@@ -146,13 +133,7 @@ export const AddToCaseModal: React.FC<AddToCaseModalProps> = ({
   const fieldsLocked = submitting || savedCase !== null;
 
   return (
-    <Modal
-      open={isOpen}
-      onClose={closeModal}
-      title="Add to a case"
-      description="Link this transaction to an investigation and record why it belongs there."
-      className="max-w-lg"
-    >
+    <>
       <div className="panel-inset mb-5 flex flex-wrap items-center justify-between gap-2 px-4 py-3 text-sm">
         <span className="text-ink-muted">Transaction</span>
         <span className="font-mono tabular-nums text-ink">#{transactionId}</span>
@@ -166,8 +147,8 @@ export const AddToCaseModal: React.FC<AddToCaseModalProps> = ({
             <p className="break-words text-sm text-ink">{savedCase.case_name} <span className="font-mono tabular-nums text-ink-muted">#{savedCase.id}</span></p>
           </div>
           <div className="flex flex-col gap-2 border-t border-line pt-5 sm:flex-row sm:justify-end">
-            <Link to={`/cases/${savedCase.id}`} onClick={closeModal} className="btn-secondary">Open case<ArrowUpRight className="h-4 w-4" aria-hidden="true" /></Link>
-            <button type="button" onClick={closeModal} className="btn-primary">Close</button>
+            <Link to={`/cases/${savedCase.id}`} onClick={onClose} className="btn-secondary">Open case<ArrowUpRight className="h-4 w-4" aria-hidden="true" /></Link>
+            <button type="button" onClick={onClose} className="btn-primary">Close</button>
           </div>
         </div>
       ) : (
@@ -175,7 +156,12 @@ export const AddToCaseModal: React.FC<AddToCaseModalProps> = ({
           {savedCase ? (
             <div role="status" className="space-y-2 border-b border-line pb-4 text-sm">
               <p className="font-medium text-accent">Case created and transaction linked</p>
-              <Link to={`/cases/${savedCase.id}`} onClick={closeModal} className="text-link inline-flex min-h-11 items-center gap-2">Open {savedCase.case_name}<ArrowUpRight className="h-4 w-4" aria-hidden="true" /></Link>
+              {!submitting && (
+                <Link to={`/cases/${savedCase.id}`} onClick={onClose} className="text-link inline-flex min-h-11 items-center gap-2">
+                  Open {savedCase.case_name}
+                  <ArrowUpRight className="h-4 w-4" aria-hidden="true" />
+                </Link>
+              )}
             </div>
           ) : (
             <>
@@ -190,7 +176,7 @@ export const AddToCaseModal: React.FC<AddToCaseModalProps> = ({
                   {casesLoading ? (
                     <p role="status" className="flex items-center gap-2 py-3 text-sm text-ink-muted"><LoaderCircle className="h-4 w-4 motion-safe:animate-spin" aria-hidden="true" />Loading cases...</p>
                   ) : casesError ? (
-                    <div className="space-y-3"><p role="alert" className="text-sm text-signal-illicit">Cases could not be loaded. {casesError}</p><button type="button" onClick={() => setCasesReload((reload) => reload + 1)} disabled={submitting} className="btn-secondary w-full">Retry loading cases</button></div>
+                    <div className="space-y-3"><p role="alert" className="text-sm text-signal-illicit">Cases could not be loaded. {casesError}</p><button type="button" onClick={() => { setCasesLoading(true); setCasesError(null); setCasesReload((reload) => reload + 1); }} disabled={submitting} className="btn-secondary w-full">Retry loading cases</button></div>
                   ) : cases.length === 0 ? (
                     <div className="space-y-3"><p className="text-sm leading-relaxed text-ink-muted">There are no cases yet. Create one for this transaction.</p><button type="button" onClick={() => setIsCreatingNew(true)} className="btn-secondary w-full"><Plus className="h-4 w-4" aria-hidden="true" />Create a new case</button></div>
                   ) : (
@@ -221,7 +207,7 @@ export const AddToCaseModal: React.FC<AddToCaseModalProps> = ({
           </div>
           {error && <p id="case-attach-error" role="alert" className="text-sm leading-relaxed text-signal-illicit">{error}</p>}
           <div className="flex flex-col-reverse gap-2 border-t border-line pt-5 sm:flex-row sm:justify-end">
-            <button type="button" onClick={closeModal} disabled={submitting} className="btn-secondary">{savedCase ? 'Close' : 'Cancel'}</button>
+            <button type="button" onClick={onClose} disabled={submitting} className="btn-secondary">{savedCase ? 'Close' : 'Cancel'}</button>
             <button type="submit" disabled={submitting || (!savedCase && (isCreatingNew ? !newCaseName.trim() : casesLoading || !!casesError || !selectedCaseId))} className="btn-primary">
               {submitting && <LoaderCircle className="h-4 w-4 motion-safe:animate-spin" aria-hidden="true" />}
               {submitting ? 'Saving...' : savedCase ? note.trim() ? 'Retry saving note' : 'Finish' : isCreatingNew ? 'Create case and attach' : 'Attach transaction'}
@@ -230,6 +216,17 @@ export const AddToCaseModal: React.FC<AddToCaseModalProps> = ({
           {submitting && <p role="status" className="text-sm text-ink-muted">Saving the attachment. This dialog will stay open until the request finishes.</p>}
         </form>
       )}
+    </>
+  );
+};
+
+export const AddToCaseModal: React.FC<AddToCaseModalProps> = ({ transactionId, isOpen, onClose, onSuccess }) => {
+  const [submitting, setSubmitting] = useState(false);
+  const closeModal = () => { if (!submitting) onClose(); };
+
+  return (
+    <Modal open={isOpen} onClose={closeModal} title="Add to a case" description="Link this transaction to an investigation and record why it belongs there." className="max-w-lg">
+      {isOpen && <AddToCaseContent key={transactionId} transactionId={transactionId} onClose={closeModal} onSuccess={onSuccess} onSubmittingChange={setSubmitting} />}
     </Modal>
   );
 };

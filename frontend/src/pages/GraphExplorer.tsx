@@ -1,279 +1,96 @@
-import React, { useEffect, useState } from 'react';
-import { useSearchParams, useNavigate } from 'react-router-dom';
-import { Network, ArrowRight, AlertTriangle } from 'lucide-react';
+import { useEffect, useState, type FormEvent } from 'react';
+import { Link, useSearchParams } from 'react-router-dom';
+import { Network, ArrowUpRight, ArrowRight, Search, Info, PanelRightClose, PanelRightOpen, ScanLine, Layers, RefreshCw, GitBranch } from 'lucide-react';
 import { api } from '../services/api';
-import { GraphResponse, GraphNode } from '../types/api';
+import type { GraphResponse, GraphNode, TransactionSummary } from '../types/api';
 import { CytoscapeCanvas } from '../components/graph/CytoscapeCanvas';
 import { RiskBadge } from '../components/common/RiskBadge';
 import { LabelBadge } from '../components/common/LabelBadge';
+import { PageHeader } from '../components/common/PageHeader';
+import { EmptyState } from '../components/common/EmptyState';
+import { NetworkMotif } from '../components/common/NetworkMotif';
 
-export const GraphExplorer: React.FC = () => {
-  const [searchParams, setSearchParams] = useSearchParams();
-  const navigate = useNavigate();
+function transactionId(value: string) {
+  const trimmed = value.trim();
+  const number = Number(trimmed);
+  return /^[1-9]\d*$/.test(trimmed) && Number.isSafeInteger(number) ? number : null;
+}
 
-  const initialTx = searchParams.get('tx') || '230425980';
-  const initialDepth = parseInt(searchParams.get('depth') || '1', 10) === 2 ? 2 : 1;
-
-  const [inputTx, setInputTx] = useState(initialTx);
-  const [centerTxId, setCenterTxId] = useState(parseInt(initialTx, 10) || 230425980);
-  const [depth, setDepth] = useState<number>(initialDepth);
-  const [graphData, setGraphData] = useState<GraphResponse | null>(null);
-  const [selectedNode, setSelectedNode] = useState<GraphNode | null>(null);
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState<string | null>(null);
-
-  const fetchGraph = (txId: number, d: number) => {
-    setLoading(true);
-    setError(null);
-    api
-      .getTransactionGraph(txId, d)
-      .then((res) => {
-        setGraphData(res);
-        const center = res.nodes.find((n) => n.is_center) || res.nodes[0] || null;
-        setSelectedNode(center);
-      })
-      .catch((err) => setError(err.message))
-      .finally(() => setLoading(false));
-  };
+export function GraphExplorer() {
+  const [params, setParams] = useSearchParams();
+  const rawId = params.get('tx') || '';
+  const centerId = transactionId(rawId);
+  const depth = params.get('depth') === '2' ? 2 : 1;
+  const [inputDraft, setInputDraft] = useState({ source: rawId, value: rawId });
+  const inputTx = inputDraft.source === rawId ? inputDraft.value : rawId;
+  const [selection, setSelection] = useState<{ key: string; nodeId: string } | null>(null);
+  const [suggestions, setSuggestions] = useState<TransactionSummary[]>([]);
+  const [indexAvailable, setIndexAvailable] = useState<boolean | null>(null);
+  const [inputError, setInputError] = useState<string | null>(null);
+  const [inspectorOpen, setInspectorOpen] = useState(true);
+  const [revision, setRevision] = useState(0);
+  const requestKey = `${centerId}:${depth}:${revision}`;
+  const [result, setResult] = useState<{ key: string; graph: GraphResponse | null; error: string | null }>({ key: '', graph: null, error: null });
+  const loading = !!centerId && result.key !== requestKey;
+  const graph = !centerId || loading ? null : result.graph;
+  const error = !centerId || loading ? null : result.error;
+  const selected = (selection?.key === requestKey ? graph?.nodes.find((node) => node.id === selection.nodeId) : null) || graph?.nodes.find((node) => node.is_center) || graph?.nodes[0] || null;
+  const validationError = inputError || (rawId && !centerId && inputTx === rawId ? 'Enter a positive, whole-number transaction ID.' : null);
+  function selectNode(node: GraphNode | null) { setSelection(node ? { key: requestKey, nodeId: node.id } : null); }
 
   useEffect(() => {
-    if (centerTxId) {
-      fetchGraph(centerTxId, depth);
-    }
-  }, [centerTxId, depth]);
+    const controller = new AbortController();
+    api.getTransactions({ limit: 3 }, controller.signal).then((result) => { if (!controller.signal.aborted) { setSuggestions(result.transactions); setIndexAvailable(result.total > 0); } }).catch(() => { if (!controller.signal.aborted) setIndexAvailable(null); });
+    return () => controller.abort();
+  }, []);
 
-  const handleSearchSubmit = (e: React.FormEvent) => {
-    e.preventDefault();
-    const parsed = parseInt(inputTx.trim(), 10);
-    if (!isNaN(parsed) && parsed > 0) {
-      setCenterTxId(parsed);
-      setSearchParams({ tx: parsed.toString(), depth: depth.toString() });
-    }
-  };
+  useEffect(() => {
+    if (!centerId) return;
+    const controller = new AbortController();
+    api.getTransactionGraph(centerId, depth, controller.signal).then((result) => {
+      if (controller.signal.aborted) return;
+      setResult({ key: requestKey, graph: result, error: null });
+    }).catch((reason: Error) => { if (!controller.signal.aborted) setResult({ key: requestKey, graph: null, error: reason.message }); });
+    return () => controller.abort();
+  }, [centerId, depth, requestKey]);
 
-  const handleDepthChange = (newDepth: number) => {
-    setDepth(newDepth);
-    setSearchParams({ tx: centerTxId.toString(), depth: newDepth.toString() });
-  };
+  function trace(id: number) { setInputError(null); setParams({ tx: String(id), depth: String(depth) }); if (id === centerId) setRevision((value) => value + 1); }
+  function submit(event: FormEvent) { event.preventDefault(); const id = transactionId(inputTx); if (!id) setInputError('Enter a positive, whole-number transaction ID.'); else trace(id); }
+  function changeDepth(value: number) { const next = new URLSearchParams(params); next.set('depth', String(value)); setParams(next); }
+  const probability = selected?.probability;
 
-  return (
-    <div className="flex flex-col lg:h-[calc(100vh-3.5rem)] lg:overflow-hidden text-ink">
-      {/* Explorer Control Toolbar */}
-      <div className="bg-surface/95 border-b border-line px-4 sm:px-6 py-2.5 flex flex-wrap items-center justify-between gap-3 flex-shrink-0">
-        <div className="flex flex-wrap items-center gap-3">
-          <div className="flex items-center gap-2 font-semibold text-sm text-ink">
-            <Network className="w-4 h-4 text-accent" />
-            <span>Graph Explorer</span>
-          </div>
+  return <div className="workspace-page space-y-6">
+    <PageHeader eyebrow="Transaction relationships" title="Graph explorer" subtitle="Trace a transaction through its neighborhood. Keep the connections in view while you inspect the signals." actions={<Link to="/transactions" className="btn-secondary"><Layers size={15} />Browse transactions</Link>} />
 
-          {/* Center TX Search */}
-          <form onSubmit={handleSearchSubmit} className="flex items-center gap-1.5">
-            <input
-              type="text"
-              aria-label="Center transaction ID"
-              placeholder="Center TX ID..."
-              value={inputTx}
-              onChange={(e) => setInputTx(e.target.value)}
-              className="w-36 sm:w-40 h-8 px-2.5 text-xs bg-inset border border-line-strong rounded-lg font-mono text-ink placeholder-ink-muted focus:outline-none focus:border-[var(--accent-primary)] tabular-nums"
-            />
-            <button type="submit" className="btn-secondary min-h-[32px] py-1 px-3 text-xs">
-              Trace
-            </button>
-          </form>
-
-          {/* Hop Segmented Control */}
-          <div className="inline-flex items-center bg-inset border border-line-strong rounded-lg p-0.5 text-xs font-mono">
-            <button
-              type="button"
-              onClick={() => handleDepthChange(1)}
-              className={`px-3 py-1 rounded-md transition-colors ${
-                depth === 1
-                  ? 'bg-accent text-[var(--accent-ink)] font-semibold'
-                  : 'text-ink-muted hover:text-ink'
-              }`}
-            >
-              1 Hop
-            </button>
-            <button
-              type="button"
-              onClick={() => handleDepthChange(2)}
-              className={`px-3 py-1 rounded-md transition-colors ${
-                depth === 2
-                  ? 'bg-accent text-[var(--accent-ink)] font-semibold'
-                  : 'text-ink-muted hover:text-ink'
-              }`}
-            >
-              2 Hops
-            </button>
-          </div>
-        </div>
-
-        {/* Subgraph Counters */}
-        {graphData && (
-          <div className="flex flex-wrap items-center gap-3 text-xs text-ink-muted font-mono tabular-nums">
-            <span>
-              Nodes: <strong className="text-ink">{graphData.metadata.total_nodes}</strong>
-            </span>
-            <span>
-              Edges: <strong className="text-ink">{graphData.metadata.total_edges}</strong>
-            </span>
-            <span className="text-signal-illicit">
-              Illicit: <strong>{graphData.metadata.illicit_count}</strong>
-            </span>
-            {graphData.metadata.truncated && (
-              <span className="badge-pill badge-accent">Bounded (max {graphData.metadata.max_limit})</span>
-            )}
-          </div>
-        )}
+    <section className="panel-surface overflow-hidden" aria-label="Graph tracing controls">
+      <div className="filter-bar border-b-0 gap-4">
+        <form onSubmit={submit} className="flex flex-1 basis-[340px] gap-2 min-w-0"><div className="filter-search"><Search size={15} /><label className="sr-only" htmlFor="graph-transaction">Center transaction ID</label><input id="graph-transaction" className="field-input font-mono text-xs" inputMode="numeric" autoComplete="off" value={inputTx} onChange={(event) => { setInputDraft({ source: rawId, value: event.target.value }); setInputError(null); }} placeholder="Enter an indexed transaction ID" aria-invalid={!!validationError} aria-describedby={validationError ? 'graph-input-error' : undefined} /></div><button type="submit" className="btn-primary" disabled={loading}>{loading ? <RefreshCw size={14} className="animate-spin" /> : <ScanLine size={15} />}Trace</button></form>
+        <div className="segmented-control" aria-label="Neighborhood depth"><button type="button" aria-pressed={depth === 1} onClick={() => changeDepth(1)}>1 hop</button><button type="button" aria-pressed={depth === 2} onClick={() => changeDepth(2)}>2 hops</button></div>
+        <button type="button" className="btn-ghost" aria-expanded={inspectorOpen} aria-controls="graph-inspector" onClick={() => setInspectorOpen((value) => !value)}>{inspectorOpen ? <PanelRightClose size={16} /> : <PanelRightOpen size={16} />}Inspector</button>
       </div>
+      {validationError && <p id="graph-input-error" role="alert" className="px-5 pb-4 text-xs text-signal-illicit">{validationError}</p>}
+    </section>
 
-      {/* Main Workspace: Responsive Graph Canvas + Node Inspector */}
-      <div className="flex-1 flex flex-col lg:flex-row lg:overflow-hidden">
-        {/* Canvas Container */}
-        <div className="flex-1 min-h-[430px] h-[56vh] lg:h-full p-3">
-          {loading ? (
-            <div className="w-full h-full panel-inset flex items-center justify-center">
-              <div className="text-center space-y-2.5 font-mono">
-                <div className="w-7 h-7 border-2 border-[var(--accent-primary)] border-t-transparent rounded-full animate-spin mx-auto" />
-                <div className="text-xs text-ink-muted">
-                  Traversing {depth}-hop Bitcoin neighborhood...
-                </div>
-              </div>
-            </div>
-          ) : error ? (
-            <div className="w-full h-full panel-inset flex items-center justify-center p-6">
-              <div className="max-w-md panel-surface p-5 border-[var(--signal-illicit-border)] space-y-3 font-mono text-xs">
-                <div className="font-semibold text-signal-illicit flex items-center gap-2">
-                  <AlertTriangle className="w-4 h-4" />
-                  <span>Graph Traversal Notice</span>
-                </div>
-                <p className="text-ink-secondary font-sans">{error}</p>
-                <button
-                  type="button"
-                  onClick={() => {
-                    setInputTx('230425980');
-                    setCenterTxId(230425980);
-                    setSearchParams({ tx: '230425980', depth: depth.toString() });
-                  }}
-                  className="btn-secondary text-xs"
-                >
-                  Load Sample Transaction #230425980
-                </button>
-              </div>
-            </div>
-          ) : graphData ? (
-            <CytoscapeCanvas
-              nodes={graphData.nodes}
-              edges={graphData.edges}
-              centerTransactionId={centerTxId}
-              onNodeClick={(node) => setSelectedNode(node)}
-            />
-          ) : null}
+    {graph?.metadata.truncated && <div className="data-note"><Info size={15} /><p>This is a bounded neighborhood, capped at {graph.metadata.max_limit} nodes. Connections outside the extracted graph are not shown.</p></div>}
+    <div className={`graph-workspace ${inspectorOpen ? '' : 'inspector-hidden'}`}>
+      <section className="panel-surface overflow-hidden min-w-0" aria-label="Transaction network">
+        <div className="section-bar border-b border-line flex-wrap"><div className="flex items-center gap-2.5"><Network size={17} className="text-accent" /><h2 className="section-heading">{centerId ? `Transaction #${centerId}` : 'Transaction network'}</h2></div>{graph && <div className="flex items-center gap-4 text-[11px] text-ink-muted tabular-nums"><span>{graph.nodes.length} nodes</span><span>{graph.edges.length} edges</span></div>}</div>
+        <div className="graph-stage">
+          {loading ? <div className="h-full flex flex-col justify-center items-center gap-4" role="status"><RefreshCw size={24} className="text-accent animate-spin" /><p className="text-xs text-ink-muted">Tracing the {depth}-hop neighborhood...</p></div> : error ? <div className="h-full flex flex-col justify-center"><EmptyState tone="error" title="This graph is unavailable" description={`${error}. Graph exploration needs an indexed transaction and its relationships.`} actionLabel="Retry trace" onAction={() => setRevision((value) => value + 1)} /><Link to="/dataset" className="text-link self-center">Review dataset setup<ArrowUpRight size={14} /></Link></div> : graph && centerId ? graph.nodes.length > 0 ? <CytoscapeCanvas nodes={graph.nodes} edges={graph.edges} centerTransactionId={centerId} onNodeClick={selectNode} /> : <EmptyState title="No graph nodes returned" description="The graph service did not return a neighborhood for this transaction." /> : <div className="graph-start"><NetworkMotif /><div><span className="badge-pill badge-unknown">Start a trace</span><h3>One transaction.<br />The bigger picture.</h3><p>Enter an indexed transaction ID to explore its directed connections. Choose two hops to follow the next layer of relationships.</p>{suggestions.length > 0 ? <div className="mt-5 flex flex-wrap gap-2">{suggestions.map((tx) => <button type="button" key={tx.transaction_id} onClick={() => trace(tx.transaction_id)} className="btn-secondary font-mono text-xs">#{tx.transaction_id}<ArrowRight size={13} /></button>)}</div> : <Link to={indexAvailable === false ? '/dataset' : '/transactions'} className="text-link mt-4">{indexAvailable === false ? 'Review dataset setup' : 'Find an indexed transaction'}<ArrowUpRight size={14} /></Link>}</div></div>}
         </div>
+      </section>
 
-        {/* Selected Node Side Inspector Drawer */}
-        <aside className="w-full lg:w-80 border-t lg:border-t-0 lg:border-l border-line bg-surface lg:h-full overflow-y-auto p-5 space-y-4 flex-shrink-0">
-          <div className="pb-3 border-b border-line">
-            <div className="text-[10px] font-mono font-semibold uppercase tracking-[0.12em] text-ink-muted">
-              Node Inspector
-            </div>
-            <h2 className="text-[15px] font-semibold text-ink mt-0.5">
-              Selected Entity Attributes
-            </h2>
-          </div>
-
-          {selectedNode ? (
-            <div className="space-y-4 font-mono">
-              <div className="panel-inset p-3 space-y-1">
-                <div className="text-[10px] uppercase tracking-wider text-ink-muted">
-                  Transaction ID
-                </div>
-                <div className="flex items-center justify-between gap-2">
-                  <span className="font-semibold text-sm text-ink tabular-nums">
-                    TX #{selectedNode.transaction_id}
-                  </span>
-                  {selectedNode.is_center && (
-                    <span className="badge-pill badge-accent">ORIGIN</span>
-                  )}
-                </div>
-              </div>
-
-              <div className="divide-y divide-line text-xs tabular-nums">
-                <div className="flex justify-between py-2">
-                  <span className="text-ink-muted">Hop Distance</span>
-                  <span className="font-semibold text-ink">
-                    {selectedNode.hop_level === 0 ? 'Origin (0)' : `${selectedNode.hop_level} Hop`}
-                  </span>
-                </div>
-                <div className="flex justify-between py-2">
-                  <span className="text-ink-muted">Snapshot Step</span>
-                  <span className="font-semibold text-ink">Step {selectedNode.time_step}</span>
-                </div>
-                <div className="flex justify-between py-2 items-center">
-                  <span className="text-ink-muted">Ground Truth</span>
-                  <LabelBadge label={selectedNode.label} />
-                </div>
-                <div className="flex justify-between py-2 items-center">
-                  <span className="text-ink-muted">ML Prediction</span>
-                  {selectedNode.prediction ? (
-                    <LabelBadge label={selectedNode.prediction} isPrediction />
-                  ) : (
-                    <span className="text-ink-muted">—</span>
-                  )}
-                </div>
-                <div className="flex justify-between py-2">
-                  <span className="text-ink-muted">P(Illicit)</span>
-                  <span className="font-semibold text-ink">
-                    {selectedNode.probability !== null && selectedNode.probability !== undefined
-                      ? `${(selectedNode.probability * 100).toFixed(1)}%`
-                      : '—'}
-                  </span>
-                </div>
-                <div className="flex justify-between py-2 items-center">
-                  <span className="text-ink-muted">Risk Assessment</span>
-                  <RiskBadge score={selectedNode.risk_score} level={selectedNode.risk_level} />
-                </div>
-                <div className="flex justify-between py-2">
-                  <span className="text-ink-muted">Flow Degree</span>
-                  <span className="text-ink-secondary">
-                    {selectedNode.in_degree}↓ {selectedNode.out_degree}↑
-                  </span>
-                </div>
-              </div>
-
-              <div className="pt-2 space-y-2 font-sans">
-                <button
-                  type="button"
-                  onClick={() => navigate(`/transactions/${selectedNode.transaction_id}`)}
-                  className="btn-primary w-full"
-                >
-                  <span>Open Full Dossier</span>
-                  <ArrowRight className="w-4 h-4" />
-                </button>
-
-                {!selectedNode.is_center && (
-                  <button
-                    type="button"
-                    onClick={() => {
-                      const nextId = selectedNode.transaction_id;
-                      setInputTx(nextId.toString());
-                      setCenterTxId(nextId);
-                      setSearchParams({ tx: nextId.toString(), depth: depth.toString() });
-                    }}
-                    className="btn-secondary w-full"
-                  >
-                    Center Graph Here
-                  </button>
-                )}
-              </div>
-            </div>
-          ) : (
-            <div className="text-center py-10 text-ink-muted text-xs font-mono">
-              Click any node inside the graph canvas to inspect its forensic telemetry.
-            </div>
-          )}
-        </aside>
-      </div>
+      {inspectorOpen && <aside id="graph-inspector" className="panel-surface graph-inspector" aria-label="Selected transaction inspector">
+        <div className="flex items-center justify-between mb-6"><div><p className="text-[10px] text-ink-muted mb-1">Selected transaction</p><h2 className="section-heading">Inspector</h2></div><ScanLine size={18} className="text-ink-muted" /></div>
+        {selected && graph ? <>
+          <label className="field-label" htmlFor="graph-node-selector">Choose a node</label><select id="graph-node-selector" className="field-input font-mono text-xs mb-5" value={selected.id} onChange={(event) => selectNode(graph.nodes.find((node) => node.id === event.target.value) || null)}>{graph.nodes.map((node) => <option key={node.id} value={node.id}>#{node.transaction_id}{node.is_center ? ' / origin' : ` / hop ${node.hop_level}`}</option>)}</select>
+          <div className="flex justify-between gap-2 items-center mb-5"><span className="font-mono text-sm">#{selected.transaction_id}</span>{selected.is_center && <span className="badge-pill badge-accent">Origin</span>}</div>
+          <dl className="divide-y divide-line text-[12px]">
+            <div className="inspector-row"><dt>Hop distance</dt><dd>{selected.hop_level}</dd></div><div className="inspector-row"><dt>Timestep</dt><dd>{selected.time_step}</dd></div><div className="inspector-row"><dt>Ground truth</dt><dd><LabelBadge label={selected.label} /></dd></div><div className="inspector-row"><dt>Prediction</dt><dd>{selected.prediction ? <LabelBadge label={selected.prediction} isPrediction /> : 'Unavailable'}</dd></div><div className="inspector-row"><dt>Illicit probability</dt><dd>{probability == null ? 'Unavailable' : `${(probability * 100).toFixed(1)}%`}</dd></div><div className="inspector-row"><dt>Stored risk</dt><dd><RiskBadge score={selected.risk_score} level={selected.risk_level} /></dd></div><div className="inspector-row"><dt>Connections</dt><dd>{selected.in_degree} in / {selected.out_degree} out</dd></div>
+          </dl><div className="space-y-2 mt-6"><Link to={`/transactions/${selected.transaction_id}`} className="btn-primary w-full">Open investigation<ArrowUpRight size={14} /></Link>{!selected.is_center && <button type="button" className="btn-secondary w-full" onClick={() => trace(selected.transaction_id)}>Center graph here<GitBranch size={14} /></button>}</div>
+        </> : <div className="inspector-start"><div className="empty-state-icon"><ScanLine size={24} strokeWidth={1.4} /></div><h3>Keep the context close.</h3><p>After a trace, select a node to inspect its label, model signals, risk, and connections.</p><div className="mt-8 pt-5 border-t border-line space-y-4 text-left">{['Choose an indexed transaction', 'Explore one or two hops', 'Select a node to investigate'].map((item, i) => <div key={item} className="flex items-center gap-3 text-[11px] text-ink-muted"><span className="workspace-monogram w-6 h-6">{i + 1}</span>{item}</div>)}</div></div>}
+      </aside>}
     </div>
-  );
-};
+    <p className="workspace-disclaimer"><Info size={12} />Graph connections establish relationships, not guilt. Unknown labels and unavailable predictions do not imply benign activity.</p>
+  </div>;
+}

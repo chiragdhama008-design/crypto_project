@@ -1,278 +1,101 @@
-import React, { useCallback, useEffect, useState } from 'react';
-import { useNavigate, useSearchParams } from 'react-router-dom';
-import {
-  ShieldAlert,
-  AlertTriangle,
-  ArrowRight,
-  CheckCircle2,
-  RefreshCw,
-  ChevronLeft,
-  ChevronRight,
-  Flame,
-  LucideIcon,
-} from 'lucide-react';
+import { useEffect, useState } from 'react';
+import { Link, useNavigate, useSearchParams } from 'react-router-dom';
+import { ShieldAlert, AlertTriangle, ArrowUpRight, CheckCircle2, RefreshCw, ChevronLeft, ChevronRight, Flame, Eye, Info, Network, Cpu, GitBranch, Fingerprint, X } from 'lucide-react';
 import { api } from '../services/api';
-import { TransactionSummary } from '../types/api';
+import type { HighRiskQueueResponse, TransactionSummary, DatasetStatus } from '../types/api';
 import { PageHeader } from '../components/common/PageHeader';
-import { StatTile, StatTone } from '../components/common/StatTile';
+import { StatTile, type StatTone } from '../components/common/StatTile';
 import { TableRowsSkeleton } from '../components/common/LoadingSkeleton';
 import { RiskBadge } from '../components/common/RiskBadge';
 import { LabelBadge } from '../components/common/LabelBadge';
+import { RiskGauge } from '../components/common/RiskGauge';
+import { EmptyState } from '../components/common/EmptyState';
+import { NetworkMotif } from '../components/common/NetworkMotif';
+import { Modal } from '../components/common/Modal';
 
-export const RiskAlerts: React.FC = () => {
+const levels = ['CRITICAL', 'HIGH', 'MEDIUM', 'LOW'];
+const weights = [
+  { label: 'Model probability', weight: 55, icon: Cpu, color: 'var(--accent-primary)' },
+  { label: 'Graph exposure', weight: 25, icon: Network, color: 'var(--signal-info)' },
+  { label: 'Degree topology', weight: 10, icon: GitBranch, color: 'var(--signal-high)' },
+  { label: 'Feature anomalies', weight: 10, icon: Fingerprint, color: 'var(--signal-unknown)' },
+];
+
+export function RiskAlerts() {
   const navigate = useNavigate();
-  const [searchParams, setSearchParams] = useSearchParams();
-
-  const levelFilter = (searchParams.get('level') || 'CRITICAL').toUpperCase();
-  const page = parseInt(searchParams.get('page') || '1', 10);
+  const [params, setParams] = useSearchParams();
+  const level = levels.includes((params.get('level') || '').toUpperCase()) ? params.get('level')!.toUpperCase() : '';
+  const rawPage = Number(params.get('page') || 1);
+  const page = Number.isSafeInteger(rawPage) && rawPage > 0 ? rawPage : 1;
+  const rawStep = Number(params.get('time_step'));
+  const step = Number.isInteger(rawStep) && rawStep >= 1 && rawStep <= 49 ? rawStep : undefined;
+  const [index, setIndex] = useState<DatasetStatus | null>(null);
+  const [revision, setRevision] = useState(0);
+  const requestKey = `${level}:${step || ''}:${page}:${revision}`;
+  const [result, setResult] = useState<{ key: string; data: HighRiskQueueResponse | null; error: string | null }>({ key: '', data: null, error: null });
+  const loading = result.key !== requestKey;
+  const data = loading ? null : result.data;
+  const error = loading ? null : result.error;
+  const [preview, setPreview] = useState<TransactionSummary | null>(null);
   const limit = 25;
 
-  const [alerts, setAlerts] = useState<TransactionSummary[]>([]);
-  const [total, setTotal] = useState(0);
-  const [counts, setCounts] = useState({ critical: 0, high: 0, medium: 0, low: 0 });
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState<string | null>(null);
-
-  const fetchAlerts = useCallback(() => {
-    setLoading(true);
-    api
-      .getHighRiskQueue({
-        level: levelFilter || undefined,
-        page,
-        limit,
-      })
-      .then((res) => {
-        setAlerts(res.transactions);
-        setTotal(res.total);
-        setCounts({
-          critical: res.critical_count,
-          high: res.high_count,
-          medium: res.medium_count,
-          low: res.low_count,
-        });
-        setError(null);
-      })
-      .catch((err) => setError(err.message))
-      .finally(() => setLoading(false));
-  }, [levelFilter, page, limit]);
+  useEffect(() => {
+    let active = true;
+    api.getDatasetStatus().then((result) => { if (active) setIndex(result); }).catch(() => { if (active) setIndex(null); });
+    return () => { active = false; };
+  }, [revision]);
 
   useEffect(() => {
-    fetchAlerts();
-  }, [fetchAlerts]);
+    const controller = new AbortController();
+    api.getHighRiskQueue({ level: level || undefined, time_step: step, page, limit }, controller.signal).then((result) => {
+      if (controller.signal.aborted) return;
+      setResult({ key: requestKey, data: result, error: null });
+      if (page > Math.max(1, Math.ceil(result.total / limit))) {
+        setParams((current) => { const next = new URLSearchParams(current); next.set('page', '1'); return next; }, { replace: true });
+      }
+    }).catch((reason: Error) => { if (!controller.signal.aborted) setResult({ key: requestKey, data: null, error: reason.message }); });
+    return () => controller.abort();
+  }, [level, step, page, requestKey, setParams]);
 
-  const handleLevelChange = (lvl: string) => {
-    const next = new URLSearchParams(searchParams);
-    next.set('level', lvl);
-    next.set('page', '1');
-    setSearchParams(next);
-  };
-
-  const handlePageChange = (nextPage: number) => {
-    const next = new URLSearchParams(searchParams);
-    next.set('page', nextPage.toString());
-    setSearchParams(next);
-  };
-
-  const tiers: Array<{
-    key: string;
-    label: string;
-    count: number;
-    caption: string;
-    tone: StatTone;
-    icon: LucideIcon;
-  }> = [
-    {
-      key: 'CRITICAL',
-      label: 'Critical Risk',
-      count: counts.critical,
-      caption: 'Score 81–100 · Immediate review',
-      tone: 'illicit',
-      icon: Flame,
-    },
-    {
-      key: 'HIGH',
-      label: 'High Risk',
-      count: counts.high,
-      caption: 'Score 61–80 · Elevated exposure',
-      tone: 'high',
-      icon: ShieldAlert,
-    },
-    {
-      key: 'MEDIUM',
-      label: 'Medium Risk',
-      count: counts.medium,
-      caption: 'Score 31–60 · Secondary triage',
-      tone: 'accent',
-      icon: AlertTriangle,
-    },
-    {
-      key: 'LOW',
-      label: 'Low Risk',
-      count: counts.low,
-      caption: 'Score 0–30 · Nominal baseline',
-      tone: 'licit',
-      icon: CheckCircle2,
-    },
+  function update(key: string, value: string) {
+    setParams((current) => { const next = new URLSearchParams(current); if (value) next.set(key, value); else next.delete(key); if (key !== 'page') next.delete('page'); return next; });
+  }
+  const tiers = [
+    { key: 'CRITICAL', label: 'Critical', count: data?.critical_count, caption: '81-100 / Immediate review', tone: 'illicit' as StatTone, icon: Flame },
+    { key: 'HIGH', label: 'High', count: data?.high_count, caption: '61-80 / Elevated exposure', tone: 'high' as StatTone, icon: ShieldAlert },
+    { key: 'MEDIUM', label: 'Medium', count: data?.medium_count, caption: '31-60 / Secondary triage', tone: 'unknown' as StatTone, icon: AlertTriangle },
+    { key: 'LOW', label: 'Low', count: data?.low_count, caption: '0-30 / Lower scored risk', tone: 'licit' as StatTone, icon: CheckCircle2 },
   ];
+  const emptyIndex = index?.database_ingestion.transactions_in_db === 0;
+  const matches = data?.transactions || [];
+  const totalPages = Math.max(1, Math.ceil((data?.total || 0) / limit));
+  const previewProbability = preview?.prediction_probability ?? preview?.probability;
 
-  return (
-    <div className="px-4 sm:px-6 lg:px-8 py-6 max-w-[1440px] mx-auto space-y-5 animate-fade-up">
-      <PageHeader
-        eyebrow="COMPOSITE ANOMALY ENGINE"
-        badges={[
-          { label: `${levelFilter} QUEUE`, tone: levelFilter === 'CRITICAL' ? 'illicit' : 'accent' },
-          { label: `${total.toLocaleString()} FLAGGED`, tone: 'unknown' },
-        ]}
-        title="Risk & Alert Triage Queue"
-        subtitle="Prioritized investigative queue ordered by composite risk score (55% ML inference, 25% neighborhood illicit taint, 10% degree topology, 10% z-score anomalies)."
-        actions={
-          <button
-            type="button"
-            onClick={fetchAlerts}
-            disabled={loading}
-            className="btn-secondary"
-          >
-            <RefreshCw className={`w-4 h-4 text-accent ${loading ? 'animate-spin' : ''}`} />
-            <span>Refresh Queue</span>
-          </button>
-        }
-      />
+  return <div className="workspace-page space-y-6">
+    <PageHeader eyebrow="Indexed transaction scores" title="Risk & alerts" subtitle="Triage the signals that deserve a closer look. Highest composite scores come first." actions={<>
+      <Link to="/methodology" className="btn-ghost">Scoring methodology<ArrowUpRight size={14} /></Link>
+      <button type="button" onClick={() => setRevision((value) => value + 1)} disabled={loading} className="btn-secondary"><RefreshCw size={15} className={loading ? 'animate-spin' : ''} />Refresh queue</button>
+    </>} />
 
-      {/* Interactive Tier Selector Grid */}
-      <section aria-label="Risk Severity Tiers" className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3.5">
-        {tiers.map((t) => (
-          <StatTile
-            key={t.key}
-            label={t.label}
-            value={t.count.toLocaleString()}
-            caption={t.caption}
-            tone={t.tone}
-            icon={t.icon}
-            active={levelFilter === t.key}
-            onClick={() => handleLevelChange(t.key)}
-          />
-        ))}
-      </section>
+    <div className="flex items-center justify-between text-[11px] text-ink-muted"><span>Global indexed severity counts</span><button type="button" className="text-link" onClick={() => setParams({})}>Show all levels<ArrowUpRight size={12} /></button></div>
+    <section className="metrics-grid" aria-label="Filter by risk severity">{tiers.map((tier) => <StatTile key={tier.key} label={tier.label} value={error ? 'Unavailable' : tier.count ?? 'Loading...'} caption={tier.caption} tone={tier.tone} icon={tier.icon} active={level === tier.key} onClick={() => update('level', level === tier.key ? '' : tier.key)} />)}</section>
 
-      {/* Queue Table */}
-      <section className="panel-surface overflow-hidden">
-        <div className="overflow-x-auto">
-          <table className="tx-table">
-            <thead>
-              <tr>
-                <th>Tx ID</th>
-                <th>Step</th>
-                <th>Ground Truth</th>
-                <th>Model Prediction</th>
-                <th>P(Illicit)</th>
-                <th>Risk Score</th>
-                <th>Severity</th>
-                <th>Degree</th>
-                <th className="text-right">Action</th>
-              </tr>
-            </thead>
-            <tbody>
-              {loading ? (
-                <TableRowsSkeleton rows={10} cols={9} />
-              ) : error ? (
-                <tr>
-                  <td colSpan={9} className="py-10 text-center text-signal-illicit text-xs font-mono">
-                    Error loading risk queue: {error}
-                  </td>
-                </tr>
-              ) : alerts.length === 0 ? (
-                <tr>
-                  <td colSpan={9} className="py-12 text-center text-ink-muted text-xs font-mono">
-                    No indexed transactions found in the &ldquo;{levelFilter}&rdquo; risk tier.
-                  </td>
-                </tr>
-              ) : (
-                alerts.map((tx) => {
-                  const prob = tx.prediction_probability ?? tx.probability;
-                  const degree = tx.total_degree ?? (tx.in_degree || 0) + (tx.out_degree || 0);
-                  return (
-                    <tr
-                      key={tx.transaction_id}
-                      onClick={() => navigate(`/transactions/${tx.transaction_id}`)}
-                      className="cursor-pointer group"
-                    >
-                      <td className="font-mono font-semibold text-ink group-hover:text-accent tabular-nums">
-                        #{tx.transaction_id}
-                      </td>
-                      <td className="font-mono text-ink-secondary tabular-nums">
-                        Step {tx.time_step}
-                      </td>
-                      <td>
-                        <LabelBadge label={tx.known_label} />
-                      </td>
-                      <td>
-                        {tx.prediction ? (
-                          <LabelBadge label={tx.prediction} isPrediction />
-                        ) : (
-                          <span className="text-ink-muted font-mono">—</span>
-                        )}
-                      </td>
-                      <td className="font-mono text-ink-secondary tabular-nums">
-                        {prob !== null && prob !== undefined ? `${(prob * 100).toFixed(1)}%` : '—'}
-                      </td>
-                      <td className="font-mono tabular-nums">
-                        <span className="font-semibold text-ink">{tx.risk_score}</span>
-                        <span className="text-ink-muted text-[11px]"> / 100</span>
-                      </td>
-                      <td>
-                        <RiskBadge score={tx.risk_score} level={tx.risk_level} showScore={false} />
-                      </td>
-                      <td className="font-mono text-ink-muted text-xs tabular-nums">
-                        {degree} edges ({tx.in_degree || 0}↓ {tx.out_degree || 0}↑)
-                      </td>
-                      <td className="text-right">
-                        <span className="text-xs font-mono font-semibold text-accent inline-flex items-center gap-1">
-                          <span>Investigate</span>
-                          <ArrowRight className="w-3 h-3 group-hover:translate-x-0.5 transition-transform" />
-                        </span>
-                      </td>
-                    </tr>
-                  );
-                })
-              )}
-            </tbody>
-          </table>
-        </div>
+    <section className="panel-surface overflow-hidden" aria-label="Triage queue">
+      <div className="section-bar border-b border-line flex-wrap"><div><h2 className="section-heading">Triage queue</h2><p className="section-description">{loading ? 'Refreshing indexed scores...' : error ? 'Queue data unavailable' : `${(data?.total || 0).toLocaleString()} scored records in this view`}</p></div><div className="flex items-center gap-3 flex-wrap">
+        <label className="sr-only" htmlFor="risk-timestep">Filter by timestep</label><select id="risk-timestep" value={step || ''} onChange={(event) => update('time_step', event.target.value)} className="field-input w-auto"><option value="">All timesteps</option>{Array.from({ length: 49 }, (_, i) => <option key={i} value={i + 1}>Timestep {i + 1}</option>)}</select>
+        {(level || step) && <button type="button" className="btn-ghost" onClick={() => setParams({})}><X size={13} />Clear filters</button>}
+      </div></div>
+      {error ? <EmptyState tone="error" title="The queue could not be loaded" description={error} actionLabel="Retry queue" onAction={() => setRevision((value) => value + 1)} /> : !loading && matches.length === 0 ? <div className="queue-empty"><NetworkMotif /><div className="queue-empty-copy"><span className="badge-pill badge-unknown">{emptyIndex ? 'Index not populated' : 'No matching scores'}</span><h3 className="mt-4">{emptyIndex ? 'A clear queue starts with a connected index.' : level || step ? 'No scores match this view.' : 'Nothing to triage yet.'}</h3><p>{emptyIndex ? 'The overview shows the reference Bitcoin dataset. This queue only shows transactions that have actually been indexed and scored.' : level || step ? 'Try a different severity or timestep. A filtered empty queue does not mean the rest of the index is clear.' : 'Indexed transactions need stored risk scores before they can appear in the triage queue.'}</p><button type="button" className="btn-primary" onClick={() => emptyIndex || (!level && !step) ? navigate('/dataset') : setParams({})}>{emptyIndex || (!level && !step) ? 'Review dataset setup' : 'Show all scores'}<ArrowUpRight size={15} /></button></div></div> : <div className="overflow-x-auto"><table className="tx-table"><thead><tr><th>Transaction</th><th>Step</th><th>Ground truth</th><th>Model prediction</th><th>Illicit probability</th><th>Stored risk</th><th>Connections</th><th>Review</th></tr></thead><tbody>
+        {loading ? <TableRowsSkeleton rows={6} cols={8} /> : matches.map((tx) => { const probability = tx.prediction_probability ?? tx.probability; return <tr key={tx.transaction_id}><td><Link to={`/transactions/${tx.transaction_id}`} className="text-link font-mono">#{tx.transaction_id}</Link></td><td className="tabular-nums text-ink-muted">{tx.time_step}</td><td><LabelBadge label={tx.known_label} /></td><td>{tx.prediction ? <LabelBadge label={tx.prediction} isPrediction /> : <span className="text-ink-muted text-xs">Not evaluated</span>}</td><td className="tabular-nums">{probability == null ? <span className="text-ink-muted">Unavailable</span> : `${(probability * 100).toFixed(1)}%`}</td><td><RiskBadge score={tx.risk_score} level={tx.risk_level} /></td><td className="text-xs tabular-nums text-ink-muted">{tx.total_degree ?? tx.in_degree + tx.out_degree}</td><td><button type="button" className="icon-button" onClick={() => setPreview(tx)} aria-label={`Review signals for transaction ${tx.transaction_id}`} title="Review signals"><Eye size={16} /></button></td></tr>; })}
+      </tbody></table></div>}
+      <div className="table-pagination"><span>{loading ? 'Loading records...' : error ? 'Records unavailable' : `${matches.length ? (page - 1) * limit + 1 : 0}-${matches.length ? (page - 1) * limit + matches.length : 0} of ${(data?.total || 0).toLocaleString()} scored records`}</span><div className="flex items-center gap-2"><button type="button" className="icon-button border border-line" onClick={() => update('page', String(page - 1))} disabled={page <= 1 || loading || !!error} aria-label="Previous queue page"><ChevronLeft size={15} /></button><span className="tabular-nums px-2">{page} / {totalPages}</span><button type="button" className="icon-button border border-line" onClick={() => update('page', String(page + 1))} disabled={page >= totalPages || loading || !!error} aria-label="Next queue page"><ChevronRight size={15} /></button></div></div>
+    </section>
 
-        {/* Footer Pagination */}
-        <div className="px-5 py-3.5 bg-inset/60 border-t border-line flex flex-col sm:flex-row items-center justify-between gap-3 text-xs font-mono text-ink-muted tabular-nums">
-          <div>
-            Showing{' '}
-            <span className="text-ink font-semibold">
-              {alerts.length > 0 ? (page - 1) * limit + 1 : 0}
-            </span>{' '}
-            to <span className="text-ink font-semibold">{Math.min(page * limit, total)}</span> of{' '}
-            <span className="text-ink font-semibold">{total.toLocaleString()}</span> alerts
-          </div>
+    <section className="panel-surface p-6" aria-label="Composite risk scoring components"><div className="flex flex-wrap justify-between items-start gap-4 mb-5"><div><h2 className="section-heading">Four signals. One review priority.</h2><p className="section-description">The canonical risk engine combines these weights, with ground-truth overrides.</p></div><span className="badge-pill badge-unknown">Score 0-100</span></div><div className="risk-weights mb-5">{weights.map((item) => <span key={item.label} style={{ flex: item.weight, background: item.color }} />)}</div><div className="grid grid-cols-2 lg:grid-cols-4 gap-5">{weights.map((item) => <div key={item.label} className="flex gap-3 items-start"><item.icon size={17} style={{ color: item.color }} className="mt-0.5 flex-shrink-0" /><div><p className="text-[12px] text-ink-secondary">{item.label}</p><p className="text-xl font-medium tracking-tight mt-1 tabular-nums">{item.weight}<span className="text-xs text-ink-muted">%</span></p></div></div>)}</div></section>
+    <p className="workspace-disclaimer"><Info size={12} />Risk scores are probabilistic investigative leads, not a legal determination. Verify the underlying evidence before taking action.</p>
 
-          <div className="flex items-center gap-2">
-            <button
-              type="button"
-              onClick={() => handlePageChange(Math.max(1, page - 1))}
-              disabled={page <= 1 || loading}
-              className="btn-secondary min-h-[34px] py-1 px-3 text-xs font-mono"
-            >
-              <ChevronLeft className="w-3.5 h-3.5" />
-              <span>Prev</span>
-            </button>
-            <span className="px-2 text-accent font-semibold">Page {page}</span>
-            <button
-              type="button"
-              onClick={() => handlePageChange(page + 1)}
-              disabled={alerts.length < limit || page * limit >= total || loading}
-              className="btn-secondary min-h-[34px] py-1 px-3 text-xs font-mono"
-            >
-              <span>Next</span>
-              <ChevronRight className="w-3.5 h-3.5" />
-            </button>
-          </div>
-        </div>
-      </section>
-    </div>
-  );
-};
+    <Modal open={!!preview} onClose={() => setPreview(null)} title={preview ? `Transaction #${preview.transaction_id}` : 'Transaction signals'} description="Stored score and model signals from the indexed record.">
+      {preview && <div className="space-y-5"><div className="flex items-center gap-6"><RiskGauge score={preview.risk_score} level={preview.risk_level} /><div className="space-y-3"><RiskBadge score={preview.risk_score} level={preview.risk_level} /><p className="text-xs text-ink-muted">Timestep {preview.time_step}</p><LabelBadge label={preview.known_label} /></div></div><div className="grid grid-cols-2 gap-4 border-y border-line py-4"><div><p className="field-label">Model prediction</p>{preview.prediction ? <LabelBadge label={preview.prediction} isPrediction /> : <p className="text-xs text-ink-muted">Not evaluated</p>}</div><div><p className="field-label">Illicit probability</p><p className="text-lg tabular-nums">{previewProbability == null ? 'Unavailable' : `${(previewProbability * 100).toFixed(1)}%`}</p></div></div><div><h3 className="text-sm font-medium mb-3">Recorded triggers</h3>{preview.trigger_reasons?.length ? <ul className="space-y-2 text-xs text-ink-secondary leading-relaxed">{preview.trigger_reasons.map((reason, i) => <li key={i} className="flex gap-2"><span className="status-dot text-signal-high mt-1.5" />{reason}</li>)}</ul> : <p className="text-xs text-ink-muted">No trigger details were returned for this record.</p>}</div><Link to={`/transactions/${preview.transaction_id}`} onClick={() => setPreview(null)} className="btn-primary w-full">Open investigation view<ArrowUpRight size={15} /></Link></div>}
+    </Modal>
+  </div>;
+}

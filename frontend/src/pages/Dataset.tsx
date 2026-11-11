@@ -1,7 +1,7 @@
 import React, { useEffect, useState } from 'react';
 import { AlertTriangle, CheckCircle2, Database, FileSpreadsheet, RefreshCw } from 'lucide-react';
 import { api } from '../services/api';
-import { DatasetStatus } from '../types/api';
+import type { DatasetStatus } from '../types/api';
 import { PageHeader } from '../components/common/PageHeader';
 import { StatTile } from '../components/common/StatTile';
 import { EmptyState } from '../components/common/EmptyState';
@@ -14,10 +14,14 @@ export const Dataset: React.FC = () => {
   const [error, setError] = useState<string | null>(null);
   const [refreshKey, setRefreshKey] = useState(0);
 
-  useEffect(() => {
-    let cancelled = false;
+  const refreshStatus = () => {
     setLoading(true);
     setError(null);
+    setRefreshKey((key) => key + 1);
+  };
+
+  useEffect(() => {
+    let cancelled = false;
     api.getDatasetStatus()
       .then((data) => {
         if (cancelled) return;
@@ -63,22 +67,32 @@ export const Dataset: React.FC = () => {
         subtitle="Check source files and the records available to investigate."
         badges={!loading && !error && status ? [{ label: hasIndexedTransactions ? 'Indexed records' : transactionCount === 0 ? 'Index empty' : 'Index not reported', tone: hasIndexedTransactions ? 'accent' : 'unknown' }] : []}
         actions={
-          <button type="button" className="btn-secondary" disabled={loading} onClick={() => setRefreshKey((key) => key + 1)}><RefreshCw className="h-4 w-4" aria-hidden="true" />Refresh status</button>
+          <button type="button" className="btn-secondary" disabled={loading} onClick={refreshStatus}><RefreshCw className="h-4 w-4" aria-hidden="true" />Refresh status</button>
         }
       />
 
       {loading ? (
         <section className="space-y-4" role="status" aria-label="Loading source and database status"><div className="panel-surface h-60 animate-pulse" aria-hidden="true" /><div className="metrics-grid grid grid-cols-2 gap-4 xl:grid-cols-4" aria-hidden="true">{Array.from({ length: 4 }, (_, index) => <div key={index} className="panel-surface h-28 animate-pulse" />)}</div><span className="sr-only">Reading dataset status...</span></section>
       ) : error || !status ? (
-        <EmptyState icon={AlertTriangle} tone="error" title="Dataset status unavailable" description={error || 'The dataset status service did not return a response.'} actionLabel="Retry status" onAction={() => setRefreshKey((key) => key + 1)} />
+        <EmptyState icon={AlertTriangle} tone="error" title="Dataset status unavailable" description={error || 'The dataset status service did not return a response.'} actionLabel="Retry status" onAction={refreshStatus} />
       ) : (
         <>
           <section className="panel-surface grid gap-6 p-5 sm:p-6 xl:grid-cols-2" aria-labelledby="index-heading">
             <div className="space-y-5">
               <div className="flex items-center gap-2.5"><Database className="h-4 w-4 text-ink-muted" aria-hidden="true" /><h2 id="index-heading" className="section-heading">Investigation index</h2></div>
               <dl className="grid grid-cols-2 gap-5">
-                <div><dt className="field-label">Indexed transactions</dt><dd className={`mt-2 text-3xl font-medium tracking-tight tabular-nums ${hasIndexedTransactions ? 'text-accent' : 'text-ink'}`}>{formatCount(transactionCount)}</dd></div>
-                <div><dt className="field-label">Indexed flow edges</dt><dd className="mt-2 text-3xl font-medium tracking-tight text-ink tabular-nums">{formatCount(edgeCount)}</dd></div>
+                <div className="min-w-0">
+                  <dt className="field-label">Indexed transactions</dt>
+                  <dd className={`mt-2 text-2xl font-medium tracking-tight tabular-nums sm:text-3xl ${hasIndexedTransactions ? 'text-accent' : 'text-ink'}`}>
+                    {formatCount(transactionCount)}
+                  </dd>
+                </div>
+                <div className="min-w-0">
+                  <dt className="field-label">Indexed flow edges</dt>
+                  <dd className="mt-2 text-2xl font-medium tracking-tight text-ink tabular-nums sm:text-3xl">
+                    {formatCount(edgeCount)}
+                  </dd>
+                </div>
               </dl>
               <p className="text-sm leading-relaxed text-ink-muted">
                 {transactionCount === 0 ? 'Search and graph views need indexed transaction records. The corpus summary remains available below as reference.' : hasIndexedTransactions ? 'Transaction records are present. Counts alone do not verify feature coverage, graph completeness or model runtime availability.' : 'The service did not report an indexed transaction count. Corpus metadata cannot establish index readiness.'}
@@ -91,7 +105,7 @@ export const Dataset: React.FC = () => {
                 const ratio = typeof item.indexed === 'number' && typeof item.reference === 'number' && item.reference > 0 ? (item.indexed / item.reference) * 100 : null;
                 return <div key={item.label} className="space-y-2"><div className="flex items-center justify-between gap-3 text-sm"><span className="text-ink-muted">{item.label}</span><span className="font-medium text-ink tabular-nums">{ratio !== null ? `${ratio.toFixed(1)}%` : 'Not reported'}</span></div><div className="progress-track h-2 overflow-hidden rounded-full bg-inset" role={ratio !== null ? 'meter' : undefined} aria-label={`${item.label} relative to the reference corpus`} aria-valuemin={ratio !== null ? 0 : undefined} aria-valuemax={ratio !== null ? 100 : undefined} aria-valuenow={ratio !== null ? Math.min(100, Math.max(0, ratio)) : undefined} aria-valuetext={ratio !== null ? `${formatCount(item.indexed)} indexed rows against ${formatCount(item.reference)} reference rows` : undefined}><div className="h-full rounded-full bg-accent" style={{ width: `${ratio !== null ? Math.min(100, Math.max(0, ratio)) : 0}%` }} /></div><p className="text-xs text-ink-muted tabular-nums">{formatCount(item.indexed)} indexed / {formatCount(item.reference)} reference</p></div>;
               })}
-              <p className="data-note">This comparison measures row counts, not verified transaction overlap or complete neighborhoods.</p>
+              <p className="text-xs leading-relaxed text-ink-muted">This comparison measures row counts, not verified transaction overlap or complete neighborhoods.</p>
             </div>
           </section>
 
@@ -115,7 +129,7 @@ export const Dataset: React.FC = () => {
             <dl className="grid gap-5 sm:grid-cols-3">
               {classData.map((item) => <div key={item.name} className="space-y-2"><dt className="inline-flex items-center gap-2 text-sm text-ink-muted"><span className="h-2 w-2 rounded-full" style={{ backgroundColor: item.color }} />{item.label}</dt><dd className="text-xl font-medium text-ink tabular-nums">{formatCount(item.count)}{typeof item.count === 'number' && meta?.total_transactions ? <span className="ml-2 text-xs font-normal text-ink-muted">{((item.count / meta.total_transactions) * 100).toFixed(1)}%</span> : null}</dd></div>)}
             </dl>
-            <p className="data-note border-t border-line pt-4">UNKNOWN labels are preserved, never converted to LICIT. Unlabeled nodes can carry graph context but are excluded from supervised loss and evaluation.</p>
+            <p className="border-t border-line pt-4 text-xs leading-relaxed text-ink-muted">UNKNOWN labels are preserved, never converted to LICIT. Unlabeled nodes can carry graph context but are excluded from supervised loss and evaluation.</p>
           </section>
 
           <div className="grid min-w-0 gap-5 xl:grid-cols-2">
@@ -125,7 +139,7 @@ export const Dataset: React.FC = () => {
               <ul className="divide-y divide-line">
                 {sourceFiles.map((file) => <li key={file.name} className="flex items-center justify-between gap-3 py-3.5"><div className="flex min-w-0 items-start gap-2.5"><FileSpreadsheet className="mt-0.5 h-4 w-4 shrink-0 text-ink-muted" aria-hidden="true" /><div className="min-w-0"><p className="break-all font-mono text-xs text-ink">{file.name}</p><p className="mt-1 text-xs text-ink-muted">{file.description}</p></div></div><span className={`badge-pill shrink-0 ${file.present === true ? 'badge-accent' : 'badge-unknown'}`}>{file.present === true && <CheckCircle2 className="h-3 w-3" aria-hidden="true" />}{file.present === true ? 'Found' : file.present === false ? 'Missing' : 'Not reported'}</span></li>)}
               </ul>
-              <p className="data-note">File presence is not an integrity or parsing check. Missing source CSVs do not change the precomputed metadata above.</p>
+              <p className="text-xs leading-relaxed text-ink-muted">File presence is not an integrity or parsing check. Missing source CSVs do not change the precomputed metadata above.</p>
             </section>
 
             <section className="panel-surface min-w-0 space-y-5 p-5 sm:p-6" aria-labelledby="schema-heading">
@@ -135,7 +149,7 @@ export const Dataset: React.FC = () => {
                 <div className="space-y-2"><dt className="field-label">Local transaction</dt><dd className="text-2xl font-medium text-ink tabular-nums">93</dd><dd className="font-mono text-xs text-ink-muted">Indices 0-92</dd><dd className="text-sm leading-relaxed text-ink-muted">Properties of the transaction itself.</dd></div>
                 <div className="space-y-2"><dt className="field-label">Neighborhood aggregate</dt><dd className="text-2xl font-medium text-ink tabular-nums">72</dd><dd className="font-mono text-xs text-ink-muted">Indices 93-164</dd><dd className="text-sm leading-relaxed text-ink-muted">Precomputed one-hop neighborhood summaries.</dd></div>
               </dl>
-              <p className="data-note border-t border-line pt-4">Inference requires all 165 values to be finite. Invalid vectors are rejected rather than silently scored.</p>
+              <p className="border-t border-line pt-4 text-xs leading-relaxed text-ink-muted">Inference requires all 165 values to be finite. Invalid vectors are rejected rather than silently scored.</p>
             </section>
           </div>
 
@@ -144,7 +158,7 @@ export const Dataset: React.FC = () => {
             <div><p className="field-label">Rows processed in that run</p><p className="mt-2 text-sm text-ink tabular-nums">{formatCount(ingestion?.rows_processed)}</p></div>
             <div><p className="field-label">Completed</p><p className="mt-2 text-sm text-ink tabular-nums">{completedAt && Number.isFinite(completedAt.getTime()) ? completedAt.toLocaleString() : 'No completion recorded'}</p></div>
           </section>
-          <p className="data-note">This view only reads status. Ingestion and model training are administrative operations and are not triggered here.</p>
+          <p className="text-xs leading-relaxed text-ink-muted">This view only reads status. Ingestion and model training are administrative operations and are not triggered here.</p>
         </>
       )}
     </div>

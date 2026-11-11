@@ -31,11 +31,13 @@ export function TopBar({ onOpenMobileMenu, health }: TopBarProps) {
   const { motionEnabled, toggleMotion } = useMotion();
   const [open, setOpen] = useState(false);
   const [query, setQuery] = useState('');
-  const [results, setResults] = useState<SearchResult[]>([]);
-  const [searching, setSearching] = useState(false);
-  const [searchError, setSearchError] = useState<string | null>(null);
+  const [searchState, setSearchState] = useState<{ query: string; results: SearchResult[]; error: string | null }>({ query: '', results: [], error: null });
   const [selected, setSelected] = useState(0);
   const inputRef = useRef<HTMLInputElement>(null);
+  const trimmedQuery = query.trim();
+  const results = searchState.query === trimmedQuery ? searchState.results : [];
+  const searching = open && !!trimmedQuery && searchState.query !== trimmedQuery;
+  const searchError = searchState.query === trimmedQuery ? searchState.error : null;
 
   const current = destinations.find((item) => item.path === location.pathname) || (location.pathname.startsWith('/cases/') ? { section: 'Workspace', label: 'Investigation' } : { section: 'Workspace', label: 'Transaction detail' });
   const matches = destinations.filter((item) => !query.trim() || item.label.toLowerCase().includes(query.trim().toLowerCase()));
@@ -47,6 +49,8 @@ export function TopBar({ onOpenMobileMenu, health }: TopBarProps) {
       const editing = ['INPUT', 'TEXTAREA', 'SELECT'].includes(target.tagName) || target.isContentEditable;
       if (((event.key.toLowerCase() === 'k' && (event.ctrlKey || event.metaKey)) || (event.key === '/' && !editing && !event.ctrlKey && !event.metaKey && !event.altKey)) && !document.querySelector('dialog[open]')) {
         event.preventDefault();
+        setQuery('');
+        setSelected(0);
         setOpen(true);
       }
     };
@@ -55,25 +59,19 @@ export function TopBar({ onOpenMobileMenu, health }: TopBarProps) {
   }, []);
 
   useEffect(() => {
-    if (open) { setSelected(0); inputRef.current?.focus(); }
-    else { setQuery(''); setResults([]); setSearchError(null); }
+    if (open) inputRef.current?.focus();
   }, [open]);
 
   useEffect(() => {
-    setSelected(0);
-    setResults([]);
-    setSearchError(null);
-    if (!open || !query.trim()) { setSearching(false); return; }
+    if (!open || !trimmedQuery) return;
     const controller = new AbortController();
-    setSearching(true);
     const timer = setTimeout(() => {
-      api.searchTransactions(query.trim(), controller.signal)
-        .then((data) => { if (!controller.signal.aborted) setResults(data); })
-        .catch((error: Error) => { if (!controller.signal.aborted) setSearchError(error.message || 'Transaction search is unavailable.'); })
-        .finally(() => { if (!controller.signal.aborted) setSearching(false); });
+      api.searchTransactions(trimmedQuery, controller.signal)
+        .then((data) => { if (!controller.signal.aborted) setSearchState({ query: trimmedQuery, results: data, error: null }); })
+        .catch((error: Error) => { if (!controller.signal.aborted) setSearchState({ query: trimmedQuery, results: [], error: error.message || 'Transaction search is unavailable.' }); });
     }, 220);
     return () => { clearTimeout(timer); controller.abort(); };
-  }, [query, open]);
+  }, [trimmedQuery, open]);
 
   useEffect(() => {
     if (open) document.getElementById(`command-option-${selected}`)?.scrollIntoView({ block: 'nearest' });
@@ -81,7 +79,9 @@ export function TopBar({ onOpenMobileMenu, health }: TopBarProps) {
 
   useEffect(() => { document.title = `${current.label} | TRACE-X`; }, [current.label]);
 
-  function choose(path: string) { setOpen(false); navigate(path); }
+  function closeSearch() { setOpen(false); setQuery(''); setSelected(0); }
+  function openSearch() { setOpen(true); setQuery(''); setSelected(0); }
+  function choose(path: string) { closeSearch(); navigate(path); }
   function submit(event: FormEvent) {
     event.preventDefault();
     if (options[selected]) choose(options[selected].path);
@@ -97,18 +97,18 @@ export function TopBar({ onOpenMobileMenu, health }: TopBarProps) {
         </div>
       </div>
       <div className="topbar-tools">
-        <button type="button" className="command-trigger" onClick={() => setOpen(true)} aria-label="Search workspace and transactions" aria-haspopup="dialog"><Search size={14} /><span>Search workspace...</span><kbd>Ctrl K</kbd></button>
+        <button type="button" className="command-trigger" onClick={openSearch} aria-label="Search workspace and transactions" aria-haspopup="dialog"><Search size={14} /><span>Search workspace...</span><kbd>Ctrl K</kbd></button>
         <button type="button" className="storage-status hidden xl:flex" onClick={() => navigate('/dataset')} title="View dataset and storage status"><span className={`status-dot ${health?.database.connected ? 'text-signal-licit' : ''}`} /><span>{health?.database.provider === 'Local Developer Storage' ? 'Local workspace' : health?.database.provider || 'Unverified connection'}</span></button>
         <button type="button" className="icon-button" onClick={toggleMotion} title={motionEnabled ? 'Pause animations' : 'Enable animations'} aria-label={motionEnabled ? 'Pause animations' : 'Enable animations'} aria-pressed={!motionEnabled}>{motionEnabled ? <Pause size={15} /> : <Play size={15} />}</button>
         <button type="button" className="icon-button" onClick={toggleTheme} title={theme === 'dark' ? 'Switch to light theme' : 'Switch to dark theme'} aria-label={theme === 'dark' ? 'Switch to light theme' : 'Switch to dark theme'}>{theme === 'dark' ? <Sun size={17} /> : <Moon size={17} />}</button>
       </div>
     </header>
-    <Modal open={open} onClose={() => setOpen(false)} title="Search workspace" description="Find an indexed transaction or jump to a page." className="command-modal">
+    <Modal open={open} onClose={closeSearch} title="Search workspace" description="Find an indexed transaction or jump to a page." className="command-modal">
       <form onSubmit={submit}>
         <label className="sr-only" htmlFor="workspace-search">Transaction ID or page name</label>
         <div className="relative">
           <Search size={18} className="absolute left-3 top-3.5 text-ink-muted" />
-          <input ref={inputRef} id="workspace-search" autoComplete="off" autoFocus className="field-input pl-10" placeholder="Try a transaction ID, graph, or models..." value={query} onChange={(event) => setQuery(event.target.value)} role="combobox" aria-expanded="true" aria-controls="workspace-search-results" aria-autocomplete="list" aria-activedescendant={options[selected] ? `command-option-${selected}` : undefined} onKeyDown={(event) => {
+          <input ref={inputRef} id="workspace-search" autoComplete="off" autoFocus className="field-input pl-10" placeholder="Try a transaction ID, graph, or models..." value={query} onChange={(event) => { setQuery(event.target.value); setSelected(0); }} role="combobox" aria-expanded="true" aria-controls="workspace-search-results" aria-autocomplete="list" aria-activedescendant={options[selected] ? `command-option-${selected}` : undefined} onKeyDown={(event) => {
             if (event.key === 'ArrowDown' && options.length) { event.preventDefault(); setSelected((index) => (index + 1) % options.length); }
             if (event.key === 'ArrowUp' && options.length) { event.preventDefault(); setSelected((index) => (index - 1 + options.length) % options.length); }
           }} />

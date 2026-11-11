@@ -28,10 +28,8 @@ type CaseTab = typeof caseTabs[number]['id'];
 type CaseNote = NonNullable<InvestigationCase['notes']>[number];
 const statusLabels: Record<CaseStatus, string> = { OPEN: 'Open', 'UNDER REVIEW': 'Under review', CLOSED: 'Closed' };
 
-export const CaseDetail: React.FC = () => {
-  const { caseId } = useParams<{ caseId: string }>();
+const CaseWorkspace: React.FC<{ cId: number | null }> = ({ cId }) => {
   const navigate = useNavigate();
-  const cId = caseId && /^[1-9]\d*$/.test(caseId) && Number.isSafeInteger(Number(caseId)) ? Number(caseId) : null;
   const [activeTab, setActiveTab] = useState<CaseTab>('OVERVIEW');
   const [caseData, setCaseData] = useState<InvestigationCase | null>(null);
   const [reportData, setReportData] = useState<Awaited<ReturnType<typeof api.getCaseReport>> | null>(null);
@@ -43,7 +41,6 @@ export const CaseDetail: React.FC = () => {
   const [transactionError, setTransactionError] = useState<string | null>(null);
   const [noteError, setNoteError] = useState<string | null>(null);
   const [notice, setNotice] = useState<string | null>(null);
-  const [reportLoading, setReportLoading] = useState(false);
   const [reportError, setReportError] = useState<string | null>(null);
   const [reportRevision, setReportRevision] = useState(0);
   const [copyState, setCopyState] = useState<'idle' | 'copying' | 'copied'>('idle');
@@ -57,64 +54,37 @@ export const CaseDetail: React.FC = () => {
   const tabButtons = useRef<Array<HTMLButtonElement | null>>([]);
   const currentCase = caseData?.id === cId ? caseData : null;
   const error = caseError?.caseId === cId ? caseError.message : null;
+  const reportLoading = activeTab === 'REPORT' && !reportData && !reportError && !saving;
 
   useEffect(() => {
+    if (cId === null) return;
     let cancelled = false;
+    const controller = new AbortController();
     const request = ++caseRequest.current;
-    reportRequest.current += 1;
-    mutationLock.current = false;
-    setLoading(true);
-    setCaseData(null);
-    setCaseError(null);
-    setSaving(null);
-    setNotice(null);
-    setStatusError(null);
-    setTransactionError(null);
-    setNoteError(null);
-    setReportData(null);
-    setReportError(null);
-    setReportLoading(false);
-    setCopyState('idle');
-    setCopyError(null);
-    setActiveTab('OVERVIEW');
-    setNewNote('');
-    setNoteAuthor('Investigator');
-    setTxInput('');
-    if (cId === null) {
-      setCaseError({ caseId: null, message: 'The case ID must be a positive whole number.' });
-      setLoading(false);
-    } else {
-      api.getCase(cId)
-        .then((res) => {
-          if (cancelled || request !== caseRequest.current) return;
-          if (!res || res.id !== cId) throw new Error('The server did not return the requested case.');
-          setCaseData(res);
-        })
-        .catch((err: unknown) => {
-          if (!cancelled && request === caseRequest.current) setCaseError({ caseId: cId, message: err instanceof Error ? err.message : 'The case could not be loaded.' });
-        })
-        .finally(() => { if (!cancelled && request === caseRequest.current) setLoading(false); });
-    }
+    api.getCase(cId, controller.signal)
+      .then((res) => {
+        if (cancelled || request !== caseRequest.current) return;
+        if (!res || res.id !== cId) throw new Error('The server did not return the requested case.');
+        setCaseData(res);
+      })
+      .catch((err: unknown) => {
+        if (!cancelled && request === caseRequest.current) setCaseError({ caseId: cId, message: err instanceof Error ? err.message : 'The case could not be loaded.' });
+      })
+      .finally(() => { if (!cancelled && request === caseRequest.current) setLoading(false); });
     return () => {
       cancelled = true;
+      controller.abort();
       if (request === caseRequest.current) caseRequest.current += 1;
       reportRequest.current += 1;
     };
   }, [cId, reloadKey]);
 
   useEffect(() => {
-    if (activeTab !== 'REPORT' || cId === null || caseData?.id !== cId || saving) {
-      setReportLoading(false);
-      return;
-    }
+    if (activeTab !== 'REPORT' || cId === null || caseData?.id !== cId || saving) return;
     let cancelled = false;
+    const controller = new AbortController();
     const request = ++reportRequest.current;
-    setReportData(null);
-    setReportLoading(true);
-    setReportError(null);
-    setCopyState('idle');
-    setCopyError(null);
-    api.getCaseReport(cId)
+    api.getCaseReport(cId, controller.signal)
       .then((data) => {
         if (cancelled || request !== reportRequest.current) return;
         if (!data || data.case_id !== cId) throw new Error('The report response did not match this case. Try generating it again.');
@@ -122,10 +92,10 @@ export const CaseDetail: React.FC = () => {
       })
       .catch((err: unknown) => {
         if (!cancelled && request === reportRequest.current) setReportError(err instanceof Error ? err.message : 'The report could not be generated.');
-      })
-      .finally(() => { if (!cancelled && request === reportRequest.current) setReportLoading(false); });
+      });
     return () => {
       cancelled = true;
+      controller.abort();
       if (request === reportRequest.current) reportRequest.current += 1;
     };
   }, [cId, activeTab, caseData?.id, reportRevision, saving]);
@@ -134,7 +104,6 @@ export const CaseDetail: React.FC = () => {
     reportRequest.current += 1;
     setReportData(null);
     setReportError(null);
-    setReportLoading(false);
     setCopyState('idle');
     setCopyError(null);
   };
@@ -273,7 +242,7 @@ export const CaseDetail: React.FC = () => {
     return (
       <div className="workspace-page space-y-6">
         <PageHeader title="Case unavailable" backLabel="Investigations" onBack={() => navigate('/investigations')} />
-        <div role="alert"><EmptyState icon={AlertTriangle} tone="error" title="This case could not be opened" description={cId === null ? 'The case ID must be a positive whole number.' : error || 'The requested case record could not be loaded.'} actionLabel={cId === null ? 'Open investigations' : 'Retry loading case'} onAction={cId === null ? () => navigate('/investigations') : () => setReloadKey((key) => key + 1)} /></div>
+        <div role="alert"><EmptyState icon={AlertTriangle} tone="error" title="This case could not be opened" description={cId === null ? 'The case ID must be a positive whole number.' : error || 'The requested case record could not be loaded.'} actionLabel={cId === null ? 'Open investigations' : 'Retry loading case'} onAction={cId === null ? () => navigate('/investigations') : () => { setLoading(true); setCaseError(null); setReloadKey((key) => key + 1); }} /></div>
       </div>
     );
   }
@@ -345,7 +314,7 @@ export const CaseDetail: React.FC = () => {
               role="tab"
               type="button"
               aria-selected={activeTab === tab.id}
-              aria-controls={`case-panel-${tab.id}`}
+              aria-controls={activeTab === tab.id ? `case-panel-${tab.id}` : undefined}
               tabIndex={activeTab === tab.id ? 0 : -1}
               onClick={() => selectTab(tab.id)}
               onKeyDown={(event) => handleTabKeyDown(event, index)}
@@ -367,6 +336,7 @@ export const CaseDetail: React.FC = () => {
           id="case-panel-OVERVIEW"
           role="tabpanel"
           aria-labelledby="case-tab-OVERVIEW"
+          tabIndex={0}
           className="grid items-start gap-6 xl:grid-cols-[minmax(0,1fr)_340px]"
         >
           <div className="min-w-0 space-y-6">
@@ -447,6 +417,7 @@ export const CaseDetail: React.FC = () => {
           id="case-panel-TRANSACTIONS"
           role="tabpanel"
           aria-labelledby="case-tab-TRANSACTIONS"
+          tabIndex={0}
           className="panel-surface overflow-hidden"
         >
           {txs.length === 0 ? (
@@ -499,7 +470,7 @@ export const CaseDetail: React.FC = () => {
                           <span className="text-ink-muted">Not scored</span>
                         )}
                       </td>
-                      <td className="max-w-xs truncate text-xs text-ink-secondary">{t.notes || '—'}</td>
+                      <td className="max-w-xs whitespace-pre-wrap break-words text-sm text-ink-secondary">{t.notes || <span className="text-ink-muted">No note</span>}</td>
                       <td className="text-right">
                         <Link
                           to={`/transactions/${t.transaction_id}`}
@@ -523,6 +494,7 @@ export const CaseDetail: React.FC = () => {
           id="case-panel-NOTES"
           role="tabpanel"
           aria-labelledby="case-tab-NOTES"
+          tabIndex={0}
           className="grid items-start gap-6 xl:grid-cols-[minmax(0,1fr)_340px]"
         >
           <div className="panel-surface min-w-0 space-y-5 p-5 sm:p-6">
@@ -577,7 +549,7 @@ export const CaseDetail: React.FC = () => {
                 <input
                   id="case-note-author"
                   type="text"
-                  maxLength={120}
+                  maxLength={64}
                   value={noteAuthor}
                   onChange={(e) => setNoteAuthor(e.target.value)}
                   disabled={!!saving}
@@ -629,6 +601,7 @@ export const CaseDetail: React.FC = () => {
           id="case-panel-REPORT"
           role="tabpanel"
           aria-labelledby="case-tab-REPORT"
+          tabIndex={0}
           className="space-y-5"
         >
           <div className="flex flex-wrap items-center justify-between gap-3 print:hidden">
@@ -646,15 +619,15 @@ export const CaseDetail: React.FC = () => {
             </button>
           </div>
 
-          {reportLoading ? (
+          {saving || reportLoading ? (
             <section
               className="panel-surface flex min-h-[320px] flex-col items-center justify-center gap-4 p-8 text-center print:hidden"
               role="status"
             >
               <LoaderCircle className="h-6 w-6 text-accent motion-safe:animate-spin" aria-hidden="true" />
               <div className="space-y-2">
-                <h2 className="section-heading">Preparing the report</h2>
-                <p className="text-sm text-ink-muted">Compiling saved transactions, notes, and case findings.</p>
+                <h2 className="section-heading">{saving ? 'Saving case changes' : 'Preparing the report'}</h2>
+                <p className="text-sm text-ink-muted">{saving ? 'The report will be generated after the current save finishes.' : 'Compiling saved transactions, notes, and case findings.'}</p>
               </div>
             </section>
           ) : reportError ? (
@@ -680,4 +653,10 @@ export const CaseDetail: React.FC = () => {
       )}
     </div>
   );
+};
+
+export const CaseDetail: React.FC = () => {
+  const { caseId } = useParams<{ caseId: string }>();
+  const cId = caseId && /^[1-9]\d*$/.test(caseId) && Number.isSafeInteger(Number(caseId)) ? Number(caseId) : null;
+  return <CaseWorkspace key={cId ?? 'invalid'} cId={cId} />;
 };

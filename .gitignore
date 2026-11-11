@@ -63,9 +63,10 @@ test-results/
 logs/
 .cache/
 
-# Local AI Skill Caches & Runtime Symlinks
+# Local AI Skill Caches, Tool State & Runtime Symlinks
 .agents/
 .claude/
+.kilo/
 .taste-skill/
 
 # OS & Editor Temp Files

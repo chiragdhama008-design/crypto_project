@@ -41,6 +41,10 @@ export function Sidebar({ mobileOpen, onCloseMobile, collapsed, onToggleCollapse
   }, [mobileOpen]);
 
   useEffect(() => {
+    if (dialogRef.current?.open) dialogRef.current.close();
+  }, [location.pathname]);
+
+  useEffect(() => {
     const breakpoint = window.matchMedia('(min-width: 1024px)');
     const closeIfDesktop = () => { if (breakpoint.matches && dialogRef.current?.open) onCloseMobile(); };
     breakpoint.addEventListener('change', closeIfDesktop);
@@ -51,10 +55,10 @@ export function Sidebar({ mobileOpen, onCloseMobile, collapsed, onToggleCollapse
     return (
       <div className={`sidebar-shell ${compact ? 'sidebar-collapsed' : ''}`}>
         <div className="sidebar-brand">
-          <Link to="/" aria-label="TRACE-X overview"><TraceXLogo compact={compact} /></Link>
+          <Link to="/" aria-label="TRACE-X overview" onClick={mobile ? onCloseMobile : undefined}><TraceXLogo compact={compact} /></Link>
           {mobile && <button type="button" onClick={onCloseMobile} className="icon-button" aria-label="Close navigation menu"><X size={18} /></button>}
         </div>
-        {!compact && <Link to="/dataset" className="sidebar-workspace">
+        {!compact && <Link to="/dataset" className="sidebar-workspace" onClick={mobile ? onCloseMobile : undefined}>
           <span className="workspace-monogram">B</span>
           <span className="min-w-0 flex-1"><span className="block text-ink">Bitcoin workspace</span><span className="block text-[9px] text-ink-muted mt-0.5">Elliptic dataset</span></span>
           <ChevronDown size={13} className="text-ink-muted" />
@@ -93,7 +97,7 @@ export function Sidebar({ mobileOpen, onCloseMobile, collapsed, onToggleCollapse
     <aside className={`hidden lg:block flex-shrink-0 h-dvh print:hidden transition-[width] duration-200 ${collapsed ? 'w-[72px]' : 'w-[236px]'}`}>
       {content(collapsed, false)}
     </aside>
-    <dialog ref={dialogRef} className="mobile-nav-dialog print:hidden" aria-label="Workspace navigation" onCancel={(event) => { event.preventDefault(); onCloseMobile(); }} onClick={(event) => { if (event.target === event.currentTarget) onCloseMobile(); }}>
+    <dialog ref={dialogRef} className="mobile-nav-dialog print:hidden" aria-label="Workspace navigation" onClose={onCloseMobile} onCancel={(event) => { event.preventDefault(); onCloseMobile(); }} onClick={(event) => { if (event.target === event.currentTarget) onCloseMobile(); }}>
       {content(false, true)}
     </dialog>
   </>;

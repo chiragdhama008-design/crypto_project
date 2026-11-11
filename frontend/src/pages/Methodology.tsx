@@ -48,7 +48,7 @@ export const Methodology: React.FC = () => {
               <div><p className="text-sm font-medium text-ink">93 local features</p><p className="mt-1 text-xs text-ink-muted">Transaction properties / <span className="font-mono">indices 0-92</span></p></div>
               <div><p className="text-sm font-medium text-ink">72 aggregate features</p><p className="mt-1 text-xs text-ink-muted">One-hop neighborhood summaries / <span className="font-mono">indices 93-164</span></p></div>
             </div>
-            <p className="data-note">Unknown nodes remain in graph structure. They are never relabeled as licit and never enter supervised loss or evaluation metrics.</p>
+            <p className="text-xs leading-relaxed text-ink-muted">Unknown nodes remain in graph structure. They are never relabeled as licit and never enter supervised loss or evaluation metrics.</p>
           </div>
         </section>
 
@@ -63,7 +63,7 @@ export const Methodology: React.FC = () => {
                 <div className="flex justify-between gap-3 py-2.5"><dt className="text-ink">Random forest</dt><dd className="text-right text-ink-muted">Bagged trees</dd></div>
                 <div className="flex justify-between gap-3 py-2.5"><dt className="text-ink">Logistic regression</dt><dd className="text-right text-ink-muted">Linear baseline</dd></div>
               </dl>
-              <p className="data-note">Tabular models consume all 165 features, including neighborhood aggregates. Risk scoring does not blend all four classifiers.</p>
+              <p className="text-xs leading-relaxed text-ink-muted">Tabular models consume all 165 features, including neighborhood aggregates. Risk scoring does not blend all four classifiers.</p>
             </div>
             <div className="min-w-0 space-y-3">
               <svg viewBox="0 0 360 230" className="mx-auto h-auto w-full max-w-sm" role="img" aria-labelledby="receptive-field-title receptive-field-description">
@@ -83,7 +83,7 @@ export const Methodology: React.FC = () => {
               <div className="chart-legend flex flex-wrap justify-center gap-4 text-xs text-ink-muted"><span className="inline-flex items-center gap-2"><span className="h-2 w-2 rounded-full bg-accent" />Center</span><span className="inline-flex items-center gap-2"><span className="h-2 w-2 rounded-full border border-accent" />1 hop</span><span className="inline-flex items-center gap-2"><span className="h-1.5 w-1.5 rounded-full border border-ink-muted" />2 hops</span></div>
               <p className="text-center text-xs text-ink-muted">Receptive-field schematic, not a transaction subgraph</p>
             </div>
-            <p className="data-note md:col-span-2">Inference rejects non-finite or incorrectly sized vectors. Missing model artifacts stop the request rather than produce substitute predictions.</p>
+            <p className="text-xs leading-relaxed text-ink-muted md:col-span-2">Inference rejects non-finite or incorrectly sized vectors. Missing model artifacts stop the request rather than produce substitute predictions.</p>
           </div>
         </section>
 
@@ -97,7 +97,7 @@ export const Methodology: React.FC = () => {
               <div className="space-y-2"><dt className="field-label">Validation timesteps</dt><dd className="text-xl font-medium text-ink tabular-nums">35-39</dd><dd className="text-sm text-ink-muted tabular-nums">5,486 labeled nodes</dd></div>
               <div className="space-y-2"><dt className="field-label">Held-out test timesteps</dt><dd className="text-xl font-medium text-accent tabular-nums">40-49</dd><dd className="text-sm text-ink-muted tabular-nums">11,184 labeled nodes</dd></div>
             </dl>
-            <p className="data-note">Reference test split: 636 illicit and 10,548 licit nodes. Illicit-class precision, recall and F1 are reported separately from macro averages. Historical evaluations do not prove runtime readiness.</p>
+            <p className="text-xs leading-relaxed text-ink-muted">Reference test split: 636 illicit and 10,548 licit nodes. Illicit-class precision, recall and F1 are reported separately from macro averages. Historical evaluations do not prove runtime readiness.</p>
           </div>
         </section>
 

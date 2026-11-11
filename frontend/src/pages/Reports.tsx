@@ -1,5 +1,5 @@
 import React, { useEffect, useRef, useState } from 'react';
-import { Link, useSearchParams } from 'react-router-dom';
+import { Link, useLocation, useSearchParams } from 'react-router-dom';
 import { Printer, FileText, Copy, Check, AlertCircle, ArrowUpRight, RefreshCw, Info, LoaderCircle } from 'lucide-react';
 import { api } from '../services/api';
 import { CaseStatus, InvestigationCase } from '../types/api';
@@ -13,9 +13,8 @@ import { LabelBadge } from '../components/common/LabelBadge';
 type CaseReport = Awaited<ReturnType<typeof api.getCaseReport>>;
 type CopyState = 'idle' | 'copying' | 'copied';
 type ReportState =
-  | { caseId: number | null; status: 'idle' | 'loading' }
-  | { caseId: number; status: 'ready'; data: CaseReport }
-  | { caseId: number; status: 'error'; message: string };
+  | { selection: string; status: 'ready'; data: CaseReport }
+  | { selection: string; status: 'error'; message: string };
 
 const statusLabels: Record<CaseStatus, string> = {
   OPEN: 'Open',
@@ -61,12 +60,12 @@ export const ReportDocument: React.FC<ReportDocumentProps> = ({ report, copyStat
         <div className="space-y-1.5">
           <dt className="text-xs text-ink-muted">Average risk</dt>
           <dd className={completeRisk && Number.isFinite(averageRisk) ? 'font-mono text-xl tabular-nums text-ink' : 'text-base font-medium text-ink-muted'}>
-            {completeRisk && Number.isFinite(averageRisk) ? <>{averageRisk}<span className="text-xs text-ink-muted"> / 100</span></> : scoredCount > 0 ? 'Incomplete' : 'Not scored'}
+            {completeRisk && Number.isFinite(averageRisk) ? <>{averageRisk}<span className="text-xs text-ink-muted"> / 100</span></> : completeRisk ? 'Not provided' : scoredCount > 0 ? 'Incomplete' : 'Not scored'}
           </dd>
         </div>
         <div className="space-y-1.5">
           <dt className="text-xs text-ink-muted">Case connections</dt>
-          <dd className="font-mono text-xl tabular-nums text-ink">{report.network_findings?.internal_case_edges_count ?? 'Not provided'}</dd>
+          <dd className={typeof report.network_findings?.internal_case_edges_count === 'number' ? 'font-mono text-xl tabular-nums text-ink' : 'text-base font-medium text-ink-muted'}>{report.network_findings?.internal_case_edges_count ?? 'Not provided'}</dd>
         </div>
         <div className="space-y-1.5">
           <dt className="text-xs text-ink-muted">Investigator notes</dt>
@@ -91,7 +90,7 @@ export const ReportDocument: React.FC<ReportDocumentProps> = ({ report, copyStat
           <h3 id="report-model-heading" className="section-heading">Model context</h3>
           <dl className="space-y-2 text-sm">
             <div className="flex flex-wrap justify-between gap-2"><dt className="text-ink-muted">Configured model</dt><dd className="text-ink">{report.model_findings?.active_model || 'Not provided'}</dd></div>
-            <div className="flex flex-wrap justify-between gap-2"><dt className="text-ink-muted">Reported threshold</dt><dd className="font-mono tabular-nums text-ink">{typeof report.model_findings?.detection_threshold === 'number' ? `${(report.model_findings.detection_threshold * 100).toFixed(0)}%` : 'Not provided'}</dd></div>
+            <div className="flex flex-wrap justify-between gap-2"><dt className="text-ink-muted">Reported threshold</dt><dd className={typeof report.model_findings?.detection_threshold === 'number' ? 'font-mono tabular-nums text-ink' : 'text-ink-muted'}>{typeof report.model_findings?.detection_threshold === 'number' ? `${(report.model_findings.detection_threshold * 100).toFixed(0)}%` : 'Not provided'}</dd></div>
           </dl>
           <p className="data-note">Configuration is reported at generation time. Stored predictions may come from an earlier model run.</p>
         </section>
@@ -182,69 +181,70 @@ export const ReportDocument: React.FC<ReportDocumentProps> = ({ report, copyStat
 };
 
 export const Reports: React.FC = () => {
+  const location = useLocation();
   const [searchParams, setSearchParams] = useSearchParams();
   const [cases, setCases] = useState<InvestigationCase[]>([]);
   const [loading, setLoading] = useState(true);
   const [casesError, setCasesError] = useState<string | null>(null);
   const [casesReload, setCasesReload] = useState(0);
   const [reportRevision, setReportRevision] = useState(0);
-  const [reportState, setReportState] = useState<ReportState>({ caseId: null, status: 'idle' });
-  const [copyState, setCopyState] = useState<CopyState>('idle');
-  const [copyError, setCopyError] = useState<string | null>(null);
+  const [reportState, setReportState] = useState<ReportState | null>(null);
+  const [clipboard, setClipboard] = useState<{ digest: string; status: CopyState; error: string | null } | null>(null);
   const reportRequest = useRef(0);
 
   const requestedCase = searchParams.get('case');
   const selectedCase = requestedCase ? cases.find((c) => String(c.id) === requestedCase) : cases[0];
   const selectedCaseId = selectedCase?.id ?? null;
-  const report = reportState.status === 'ready' && reportState.caseId === selectedCaseId ? reportState.data : null;
-  const reportError = reportState.status === 'error' && reportState.caseId === selectedCaseId ? reportState.message : null;
-  const reportLoading = selectedCaseId !== null && (reportState.caseId !== selectedCaseId || reportState.status === 'loading' || reportState.status === 'idle');
+  const selection = `${location.key}:${selectedCaseId}:${reportRevision}`;
+  const report = reportState?.status === 'ready' && reportState.selection === selection ? reportState.data : null;
+  const reportError = reportState?.status === 'error' && reportState.selection === selection ? reportState.message : null;
+  const reportLoading = selectedCaseId !== null && reportState?.selection !== selection;
+  const currentClipboard = report && clipboard?.digest === report.integrity_sha256 ? clipboard : null;
+  const copyState = currentClipboard?.status ?? 'idle';
+  const copyError = currentClipboard?.error ?? null;
 
   useEffect(() => {
     let cancelled = false;
-    setLoading(true);
-    setCasesError(null);
-    api.getCases()
+    const controller = new AbortController();
+    api.getCases(controller.signal)
       .then((data) => { if (!cancelled) setCases(data); })
       .catch((err: unknown) => {
         if (!cancelled) setCasesError(err instanceof Error ? err.message : 'The case list could not be loaded.');
       })
       .finally(() => { if (!cancelled) setLoading(false); });
-    return () => { cancelled = true; };
+    return () => {
+      cancelled = true;
+      controller.abort();
+    };
   }, [casesReload]);
 
   useEffect(() => {
     let cancelled = false;
+    const controller = new AbortController();
     const request = ++reportRequest.current;
-    setCopyState('idle');
-    setCopyError(null);
-    if (selectedCaseId === null) {
-      setReportState({ caseId: null, status: 'idle' });
-    } else {
-      setReportState({ caseId: selectedCaseId, status: 'loading' });
-      api.getCaseReport(selectedCaseId)
+    if (selectedCaseId !== null) {
+      api.getCaseReport(selectedCaseId, controller.signal)
         .then((data) => {
           if (cancelled || request !== reportRequest.current) return;
           if (!data || data.case_id !== selectedCaseId) throw new Error('The report response did not match the selected case. Try generating it again.');
-          setReportState({ caseId: selectedCaseId, status: 'ready', data });
+          setReportState({ selection, status: 'ready', data });
         })
         .catch((err: unknown) => {
           if (!cancelled && request === reportRequest.current) {
-            setReportState({ caseId: selectedCaseId, status: 'error', message: err instanceof Error ? err.message : 'The report could not be generated.' });
+            setReportState({ selection, status: 'error', message: err instanceof Error ? err.message : 'The report could not be generated.' });
           }
         });
     }
     return () => {
       cancelled = true;
+      controller.abort();
       if (request === reportRequest.current) reportRequest.current += 1;
     };
-  }, [selectedCaseId, reportRevision]);
+  }, [selectedCaseId, selection]);
 
   const selectCase = (value: string) => {
+    if (value === String(selectedCaseId)) return;
     reportRequest.current += 1;
-    setReportState({ caseId: null, status: 'idle' });
-    setCopyState('idle');
-    setCopyError(null);
     setSearchParams((previous) => {
       const next = new URLSearchParams(previous);
       next.set('case', value);
@@ -255,24 +255,19 @@ export const Reports: React.FC = () => {
   const refreshReport = () => {
     if (selectedCaseId === null || reportLoading) return;
     reportRequest.current += 1;
-    setReportState({ caseId: selectedCaseId, status: 'loading' });
-    setCopyState('idle');
-    setCopyError(null);
     setReportRevision((revision) => revision + 1);
   };
 
   const handleCopyDigest = async (digest: string) => {
     if (!report || copyState === 'copying') return;
     const request = reportRequest.current;
-    setCopyState('copying');
-    setCopyError(null);
+    setClipboard({ digest, status: 'copying', error: null });
     try {
       await navigator.clipboard.writeText(digest);
-      if (request === reportRequest.current) setCopyState('copied');
+      if (request === reportRequest.current) setClipboard({ digest, status: 'copied', error: null });
     } catch {
       if (request === reportRequest.current) {
-        setCopyState('idle');
-        setCopyError('Could not copy the digest. Select the full value below and copy it manually.');
+        setClipboard({ digest, status: 'idle', error: 'Could not copy the digest. Select the full value below and copy it manually.' });
       }
     }
   };
@@ -295,7 +290,7 @@ export const Reports: React.FC = () => {
       {loading ? (
         <div role="status" aria-label="Loading report cases" className="print:hidden"><PageSkeleton cards={2} /></div>
       ) : casesError ? (
-        <div role="alert" className="print:hidden"><EmptyState icon={AlertCircle} tone="error" title="Cases could not be loaded" description={casesError} actionLabel="Retry loading cases" onAction={() => setCasesReload((reload) => reload + 1)} /></div>
+        <div role="alert" className="print:hidden"><EmptyState icon={AlertCircle} tone="error" title="Cases could not be loaded" description={casesError} actionLabel="Retry loading cases" onAction={() => { setLoading(true); setCasesError(null); setCasesReload((reload) => reload + 1); }} /></div>
       ) : cases.length === 0 ? (
         <div className="space-y-4 print:hidden">
           <EmptyState icon={FileText} title="A report starts with a case" description="Create an investigation, attach transaction references, and record your findings. The saved case becomes the source for its report." />

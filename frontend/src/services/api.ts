@@ -60,7 +60,7 @@ export const api = {
     risk_level?: string;
     time_step?: number;
     search?: string;
-  }) => {
+  }, signal?: AbortSignal) => {
     const sp = new URLSearchParams();
     if (params.page) sp.set('page', params.page.toString());
     if (params.limit) sp.set('limit', params.limit.toString());
@@ -69,7 +69,7 @@ export const api = {
     if (params.risk_level) sp.set('risk_level', params.risk_level);
     if (params.time_step) sp.set('time_step', params.time_step.toString());
     if (params.search) sp.set('search', params.search);
-    return fetchJson<PaginatedTransactionsResponse>(`${API_BASE}/transactions?${sp.toString()}`);
+    return fetchJson<PaginatedTransactionsResponse>(`${API_BASE}/transactions?${sp.toString()}`, { signal });
   },
 
   getTransaction: (id: number) => fetchJson<TransactionSummary>(`${API_BASE}/transactions/${id}`),
@@ -89,17 +89,17 @@ export const api = {
     ),
 
   // Graph
-  getTransactionGraph: (id: number, depth: number = 1) =>
-    fetchJson<GraphResponse>(`${API_BASE}/transactions/${id}/graph?depth=${depth}`),
+  getTransactionGraph: (id: number, depth: number = 1, signal?: AbortSignal) =>
+    fetchJson<GraphResponse>(`${API_BASE}/transactions/${id}/graph?depth=${depth}`, { signal }),
 
   // Risk & Alerts
-  getHighRiskQueue: (params?: { level?: string; time_step?: number; limit?: number; page?: number }) => {
+  getHighRiskQueue: (params?: { level?: string; time_step?: number; limit?: number; page?: number }, signal?: AbortSignal) => {
     const sp = new URLSearchParams();
     if (params?.level) sp.set('level', params.level);
     if (params?.time_step) sp.set('time_step', params.time_step.toString());
     if (params?.limit) sp.set('limit', params.limit.toString());
     if (params?.page) sp.set('page', params.page.toString());
-    return fetchJson<HighRiskQueueResponse>(`${API_BASE}/risk/high?${sp.toString()}`);
+    return fetchJson<HighRiskQueueResponse>(`${API_BASE}/risk/high?${sp.toString()}`, { signal });
   },
 
   getRiskBreakdown: (id: number) => fetchJson<RiskBreakdownResponse>(`${API_BASE}/risk/${id}`),

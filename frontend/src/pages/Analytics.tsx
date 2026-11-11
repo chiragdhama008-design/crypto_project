@@ -40,8 +40,7 @@ export const Analytics: React.FC = () => {
   const [chartMode, setChartMode] = useState<'count' | 'share'>('count');
   const [refreshKey, setRefreshKey] = useState(0);
 
-  useEffect(() => {
-    let cancelled = false;
+  const refreshAnalytics = () => {
     setLoading(true);
     setRiskLoading(true);
     setError(null);
@@ -50,7 +49,11 @@ export const Analytics: React.FC = () => {
     setOverview(null);
     setTimeSeries([]);
     setIndexedRisk(null);
+    setRefreshKey((key) => key + 1);
+  };
 
+  useEffect(() => {
+    let cancelled = false;
     Promise.allSettled([api.getAnalyticsOverview(), api.getTimeSeries()])
       .then(([overviewResult, temporalResult]) => {
         if (cancelled) return;
@@ -110,7 +113,7 @@ export const Analytics: React.FC = () => {
         subtitle="Read the corpus patterns, then check the indexed risk picture."
         badges={[{ label: 'Dataset reference', tone: 'unknown' }]}
         actions={
-          <button type="button" className="btn-secondary" onClick={() => setRefreshKey((key) => key + 1)} disabled={loading || riskLoading}>
+          <button type="button" className="btn-secondary" onClick={refreshAnalytics} disabled={loading || riskLoading}>
             <RefreshCw className="h-4 w-4" aria-hidden="true" />Refresh analytics
           </button>
         }
@@ -123,7 +126,7 @@ export const Analytics: React.FC = () => {
           <span className="sr-only">Loading reference distributions...</span>
         </div>
       ) : error || !overview ? (
-        <EmptyState icon={AlertTriangle} tone="error" title="Reference analytics unavailable" description={error || 'The reference summary is not available.'} actionLabel="Retry analytics" onAction={() => setRefreshKey((key) => key + 1)} />
+        <EmptyState icon={AlertTriangle} tone="error" title="Reference analytics unavailable" description={error || 'The reference summary is not available.'} actionLabel="Retry analytics" onAction={refreshAnalytics} />
       ) : (
         <>
           <section className="space-y-3" aria-label="Dataset reference totals">
@@ -187,7 +190,7 @@ export const Analytics: React.FC = () => {
               <dl className="divide-y divide-line text-sm">
                 {classData.map((item) => <div key={item.name} className="flex items-center justify-between gap-3 py-2.5"><dt className="inline-flex items-center gap-2 text-ink-muted"><span className="h-2 w-2 rounded-full" style={{ backgroundColor: item.color }} />{item.name}</dt><dd className="text-right text-ink tabular-nums">{item.value.toLocaleString()}<span className="ml-2 inline-block min-w-12 text-xs text-ink-muted">{totalTx > 0 ? ((item.value / totalTx) * 100).toFixed(1) : '0.0'}%</span></dd></div>)}
               </dl>
-              <p className="data-note">Unknown is not licit. Unlabeled nodes remain in the graph but are excluded from supervised evaluation.</p>
+              <p className="text-xs leading-relaxed text-ink-muted">Unknown is not licit. Unlabeled nodes remain in the graph but are excluded from supervised evaluation.</p>
             </section>
           </div>
         </>
@@ -210,7 +213,7 @@ export const Analytics: React.FC = () => {
                 </ResponsiveContainer>
               </div>
             ) : <p className="py-16 text-sm text-ink-muted">No degree distribution was returned.</p>}
-            <p className="data-note">A connection count describes topology. It does not identify a mixer or establish illicit activity.</p>
+            <p className="text-xs leading-relaxed text-ink-muted">A connection count describes topology. It does not identify a mixer or establish illicit activity.</p>
           </section>
         )}
 
@@ -219,7 +222,7 @@ export const Analytics: React.FC = () => {
           {riskLoading ? (
             <div className="space-y-4 py-6" role="status"><p className="text-sm text-ink-muted">Reading indexed risk counts...</p><div className="h-40 animate-pulse rounded-lg bg-inset" aria-hidden="true" /></div>
           ) : riskError || !indexedRisk ? (
-            <div className="space-y-4 py-6"><p className="data-note" role="alert">{riskError || 'No indexed risk response is available.'}</p><button type="button" className="btn-secondary" onClick={() => setRefreshKey((key) => key + 1)}>Retry analytics</button></div>
+            <div className="space-y-4 py-6"><p className="data-note" role="alert">{riskError || 'No indexed risk response is available.'}</p><button type="button" className="btn-secondary" onClick={refreshAnalytics}>Retry analytics</button></div>
           ) : indexedRisk.total === 0 ? (
             <div className="space-y-4 py-5">
               <Database className="h-7 w-7 text-ink-muted" aria-hidden="true" />
@@ -235,7 +238,7 @@ export const Analytics: React.FC = () => {
               <Link to="/risk" className="text-link inline-flex min-h-11 items-center gap-2 text-sm">View risk queue<ArrowUpRight className="h-4 w-4" aria-hidden="true" /></Link>
             </>
           )}
-          <p className="data-note border-t border-line pt-4">Counts come from indexed database records, including all scored tiers. Risk is a triage score, not a ground-truth label.</p>
+          <p className="border-t border-line pt-4 text-xs leading-relaxed text-ink-muted">Counts come from indexed database records, including all scored tiers. Risk is a triage score, not a ground-truth label.</p>
         </section>
       </div>
     </div>

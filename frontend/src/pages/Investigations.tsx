@@ -45,10 +45,9 @@ export const Investigations: React.FC = () => {
 
   useEffect(() => {
     let cancelled = false;
-    setLoading(true);
-    setError(null);
+    const controller = new AbortController();
     api
-      .getCases()
+      .getCases(controller.signal)
       .then((res) => {
         if (cancelled) return;
         setCases(res);
@@ -59,7 +58,10 @@ export const Investigations: React.FC = () => {
         }
       })
       .finally(() => { if (!cancelled) setLoading(false); });
-    return () => { cancelled = true; };
+    return () => {
+      cancelled = true;
+      controller.abort();
+    };
   }, [reloadKey]);
 
   const openCreateModal = () => {
@@ -135,7 +137,11 @@ export const Investigations: React.FC = () => {
             title="Cases could not be loaded"
             description={error}
             actionLabel="Retry loading cases"
-            onAction={() => setReloadKey((key) => key + 1)}
+            onAction={() => {
+              setLoading(true);
+              setError(null);
+              setReloadKey((key) => key + 1);
+            }}
           />
         </div>
       ) : cases.length === 0 ? (

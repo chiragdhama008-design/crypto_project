@@ -61,13 +61,26 @@ export const ModelPerformance: React.FC = () => {
   const [showAllBenchmark, setShowAllBenchmark] = useState(false);
   const [refreshKey, setRefreshKey] = useState(0);
 
-  useEffect(() => {
-    let cancelled = false;
-    setMetricRequest({ model: activeModel, data: null, loading: true, error: null });
-    setBenchmarkRequest({ model: activeModel, data: null, loading: true, error: null });
+  const selectModel = (model: ModelId) => {
+    if (model === activeModel) return;
+    setActiveModel(model);
+    setMetricRequest({ model, data: null, loading: true, error: null });
+    setBenchmarkRequest({ model, data: null, loading: true, error: null });
     setExpandedTransaction(null);
     setShowAllBenchmark(false);
+  };
 
+  const refreshResults = () => {
+    setMetricRequest({ model: activeModel, data: null, loading: true, error: null });
+    setBenchmarkRequest({ model: activeModel, data: null, loading: true, error: null });
+    setComparisonLoading(true);
+    setComparisonError(null);
+    setExpandedTransaction(null);
+    setRefreshKey((key) => key + 1);
+  };
+
+  useEffect(() => {
+    let cancelled = false;
     api.getModelMetrics(activeModel)
       .then((data) => {
         if (!cancelled) setMetricRequest({ model: activeModel, data, loading: false, error: null });
@@ -99,8 +112,6 @@ export const ModelPerformance: React.FC = () => {
 
   useEffect(() => {
     let cancelled = false;
-    setComparisonLoading(true);
-    setComparisonError(null);
     Promise.allSettled(AVAILABLE_MODELS.map((model) => api.getModelMetrics(model.id)))
       .then((results) => {
         if (cancelled) return;
@@ -141,7 +152,8 @@ export const ModelPerformance: React.FC = () => {
   const uniformWeights = features.length > 1 && features.every((feature) => Math.abs(feature.importance - features[0].importance) < 1e-9);
   const maxWeight = features[0]?.importance ?? 0;
   const benchmarkRows = benchmark?.transactions ?? [];
-  const correctCount = benchmarkRows.filter((transaction) => transaction.prediction === transaction.ground_truth).length;
+  const knownBenchmarkRows = benchmarkRows.filter((transaction) => transaction.ground_truth !== 'UNKNOWN');
+  const correctCount = knownBenchmarkRows.filter((transaction) => transaction.prediction === transaction.ground_truth).length;
   const illicitRows = benchmarkRows.filter((transaction) => transaction.ground_truth === 'ILLICIT');
   const illicitHits = illicitRows.filter((transaction) => transaction.prediction === 'ILLICIT').length;
   const visibleBenchmark = showAllBenchmark ? benchmarkRows : benchmarkRows.slice(0, 6);
@@ -154,7 +166,7 @@ export const ModelPerformance: React.FC = () => {
         subtitle="Compare model results on later, held-out Bitcoin transactions."
         badges={[{ label: 'Historical metrics', tone: 'unknown' }]}
         actions={
-          <button type="button" className="btn-secondary" onClick={() => setRefreshKey((key) => key + 1)} disabled={modelLoading || comparisonLoading || benchmarkLoading}>
+          <button type="button" className="btn-secondary" onClick={refreshResults} disabled={modelLoading || comparisonLoading || benchmarkLoading}>
             <RefreshCw className="h-4 w-4" aria-hidden="true" />
             Refresh results
           </button>
@@ -163,7 +175,7 @@ export const ModelPerformance: React.FC = () => {
 
       <div className="segmented-control grid grid-cols-2 gap-1 xl:grid-cols-4" role="group" aria-label="Model to inspect">
         {AVAILABLE_MODELS.map((model) => (
-          <button key={model.id} type="button" className="btn-ghost min-h-11 justify-start gap-3 px-4 text-left" aria-pressed={activeModel === model.id} onClick={() => setActiveModel(model.id)}>
+          <button key={model.id} type="button" className="btn-ghost min-h-11 justify-start gap-3 px-4 text-left" aria-pressed={activeModel === model.id} onClick={() => selectModel(model.id)}>
             {model.id === 'gnn' ? <Network className="h-4 w-4 shrink-0" aria-hidden="true" /> : <Cpu className="h-4 w-4 shrink-0" aria-hidden="true" />}
             <span className="min-w-0">
               <span className="block text-sm font-medium">{model.name}</span>
@@ -182,7 +194,7 @@ export const ModelPerformance: React.FC = () => {
           <div className="panel-surface h-80 animate-pulse" aria-hidden="true" />
         </section>
       ) : modelError || !metrics ? (
-        <EmptyState icon={AlertTriangle} tone="error" title="No recorded metrics" description={modelError || 'This model has no evaluation results available.'} actionLabel="Retry results" onAction={() => setRefreshKey((key) => key + 1)} />
+        <EmptyState icon={AlertTriangle} tone="error" title="No recorded metrics" description={modelError || 'This model has no evaluation results available.'} actionLabel="Retry results" onAction={refreshResults} />
       ) : (
         <>
           <section className="space-y-4" aria-labelledby="selected-model-heading">
@@ -283,7 +295,7 @@ export const ModelPerformance: React.FC = () => {
                   </div>
                 </>
               ) : <p className="py-12 text-sm text-ink-muted">Confusion counts were not recorded.</p>}
-              <p className="data-note">UNKNOWN nodes are excluded from supervised metrics. Illicit F1 is not the macro F1 average.</p>
+              <p className="text-xs leading-relaxed text-ink-muted">UNKNOWN nodes are excluded from supervised metrics. Illicit F1 is not the macro F1 average.</p>
             </section>
           </div>
         </>
@@ -306,8 +318,8 @@ export const ModelPerformance: React.FC = () => {
                 return (
                   <tr key={model.id} className={activeModel === model.id ? 'bg-accent-soft' : ''}>
                     <td>
-                      <button type="button" className="text-link inline-flex min-h-11 items-center gap-2 text-left font-medium" aria-pressed={activeModel === model.id} onClick={() => setActiveModel(model.id)}>
-                        {model.name}{activeModel === model.id && <Check className="h-3.5 w-3.5 text-accent" aria-label="Selected" />}
+                      <button type="button" className="btn-ghost min-h-11 justify-start gap-2 px-0 text-left font-medium" aria-pressed={activeModel === model.id} onClick={() => selectModel(model.id)}>
+                        {model.name}{activeModel === model.id && <Check className="h-3.5 w-3.5 text-accent" aria-hidden="true" />}
                       </button>
                       <span className="block text-xs text-ink-muted">{model.input}</span>
                     </td>
@@ -330,7 +342,7 @@ export const ModelPerformance: React.FC = () => {
             <div><p className="field-label">Validation</p><p className="mt-1 text-sm text-ink tabular-nums">Timesteps 35-39</p></div>
             <div><p className="field-label">Held-out test</p><p className="mt-1 text-sm text-ink tabular-nums">Timesteps 40-49</p></div>
           </div>
-          <p className="data-note">Recorded evaluations do not establish checkpoint availability or a working inference runtime.</p>
+          <p className="text-xs leading-relaxed text-ink-muted">Recorded evaluations do not establish checkpoint availability or a working inference runtime.</p>
         </div>
       </section>
 
@@ -367,12 +379,20 @@ export const ModelPerformance: React.FC = () => {
             <span className="badge-pill badge-unknown">Fixture only</span>
           </div>
           <p className="text-sm text-ink-muted">Stored predictions for held-out transactions under {selectedModel.name.toLowerCase()}. These records are not live inference and may not exist in the investigation index.</p>
-          {benchmarkRows.length > 0 && <div className="flex flex-wrap gap-x-6 gap-y-2 text-sm text-ink-muted tabular-nums"><span><strong className="font-medium text-ink">{correctCount} / {benchmarkRows.length}</strong> correct predictions</span><span><strong className="font-medium text-ink">{illicitHits} / {illicitRows.length}</strong> known illicit nodes found</span></div>}
+          {benchmarkRows.length > 0 && (
+            <div className="flex flex-wrap gap-x-6 gap-y-2 text-sm text-ink-muted tabular-nums">
+              <span><strong className="font-medium text-ink">{correctCount} / {knownBenchmarkRows.length}</strong> correct known-label predictions</span>
+              <span><strong className="font-medium text-ink">{illicitHits} / {illicitRows.length}</strong> known illicit nodes found</span>
+            </div>
+          )}
         </div>
         {benchmarkLoading ? (
           <p className="px-6 py-12 text-sm text-ink-muted" role="status">Loading stored benchmark records...</p>
         ) : benchmarkError ? (
-          <div className="flex flex-wrap items-center justify-between gap-3 border-t border-line p-5 sm:p-6"><p className="data-note" role="alert">{benchmarkError}</p><button type="button" className="btn-secondary" onClick={() => setRefreshKey((key) => key + 1)}>Retry benchmark</button></div>
+          <div className="flex flex-wrap items-center justify-between gap-3 border-t border-line p-5 sm:p-6">
+            <p className="data-note" role="alert">{benchmarkError}</p>
+            <button type="button" className="btn-secondary" onClick={refreshResults}>Retry benchmark</button>
+          </div>
         ) : benchmarkRows.length ? (
           <>
             <div className="overflow-x-auto" tabIndex={0} role="region" aria-label="Precomputed benchmark records">
@@ -381,7 +401,7 @@ export const ModelPerformance: React.FC = () => {
                 <tbody>
                   {visibleBenchmark.map((transaction) => {
                     const expanded = expandedTransaction === transaction.transaction_id;
-                    const correct = transaction.prediction === transaction.ground_truth;
+                    const correct = transaction.ground_truth !== 'UNKNOWN' && transaction.prediction === transaction.ground_truth;
                     return (
                       <React.Fragment key={transaction.transaction_id}>
                         <tr>
@@ -389,11 +409,35 @@ export const ModelPerformance: React.FC = () => {
                           <td className="text-ink-muted tabular-nums">{transaction.time_step}</td>
                           <td><LabelBadge label={transaction.ground_truth} /></td>
                           <td><LabelBadge label={transaction.prediction} isPrediction /></td>
-                          <td className="text-right tabular-nums">{percent(transaction.probability)}</td>
-                          <td><span className={correct ? 'text-ink-muted' : transaction.ground_truth === 'ILLICIT' ? 'text-signal-illicit' : 'text-signal-high'}>{correct ? 'Correct' : transaction.prediction === 'UNKNOWN' ? 'No prediction' : transaction.ground_truth === 'ILLICIT' ? 'Missed illicit' : 'False alarm'}</span></td>
-                          <td><button type="button" className="btn-ghost min-h-11 min-w-11 px-2" aria-expanded={expanded} aria-controls={`fixture-${transaction.transaction_id}`} aria-label={`${expanded ? 'Hide' : 'Show'} fixture details for transaction ${transaction.transaction_id}`} onClick={() => setExpandedTransaction(expanded ? null : transaction.transaction_id)}><ChevronDown className={`h-4 w-4 transition-transform ${expanded ? 'rotate-180' : ''}`} aria-hidden="true" /></button></td>
+                          <td className="text-right tabular-nums">{percent(transaction.prediction === 'UNKNOWN' ? null : transaction.probability)}</td>
+                          <td>
+                            <span className={correct || transaction.ground_truth === 'UNKNOWN' ? 'text-ink-muted' : transaction.ground_truth === 'ILLICIT' ? 'text-signal-illicit' : 'text-signal-high'}>
+                              {transaction.ground_truth === 'UNKNOWN' ? 'Not evaluated' : correct ? 'Correct' : transaction.prediction === 'UNKNOWN' ? 'No prediction' : transaction.ground_truth === 'ILLICIT' ? 'Missed illicit' : 'False alarm'}
+                            </span>
+                          </td>
+                          <td>
+                            <button
+                              type="button"
+                              className="btn-ghost min-h-11 min-w-11 px-2"
+                              aria-expanded={expanded}
+                              aria-controls={expanded ? `fixture-${transaction.transaction_id}` : undefined}
+                              aria-label={`${expanded ? 'Hide' : 'Show'} fixture details for transaction ${transaction.transaction_id}`}
+                              onClick={() => setExpandedTransaction(expanded ? null : transaction.transaction_id)}
+                            >
+                              <ChevronDown className={`h-4 w-4 transition-transform ${expanded ? 'rotate-180' : ''}`} aria-hidden="true" />
+                            </button>
+                          </td>
                         </tr>
-                        {expanded && <tr id={`fixture-${transaction.transaction_id}`}><td colSpan={7} className="bg-inset"><div className="space-y-2 py-2"><p className="text-sm text-ink">{transaction.scenario}</p><p className="text-xs text-ink-muted">Scenario text is part of the benchmark fixture, not a verified case finding. No indexed transaction dossier is opened from this record.</p></div></td></tr>}
+                        {expanded && (
+                          <tr id={`fixture-${transaction.transaction_id}`}>
+                            <td colSpan={7} className="bg-inset">
+                              <div className="space-y-2 py-2">
+                                <p className="text-sm text-ink">{transaction.scenario}</p>
+                                <p className="text-xs text-ink-muted">Scenario text is part of the benchmark fixture, not a verified case finding. No indexed transaction dossier is opened from this record.</p>
+                              </div>
+                            </td>
+                          </tr>
+                        )}
                       </React.Fragment>
                     );
                   })}

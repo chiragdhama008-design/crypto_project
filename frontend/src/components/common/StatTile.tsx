@@ -27,11 +27,9 @@ interface StatTileProps {
 function AnimatedValue({ value }: { value: number }) {
   const { motionEnabled } = useMotion();
   const [display, setDisplay] = useState(value);
+  const reduced = !motionEnabled || window.matchMedia('(prefers-reduced-motion: reduce)').matches;
   useEffect(() => {
-    if (!motionEnabled || window.matchMedia('(prefers-reduced-motion: reduce)').matches || !Number.isFinite(value)) {
-      setDisplay(value);
-      return;
-    }
+    if (reduced || !Number.isFinite(value)) return;
     const start = performance.now();
     let frame: number;
     const tick = (now: number) => {
@@ -41,8 +39,8 @@ function AnimatedValue({ value }: { value: number }) {
     };
     frame = requestAnimationFrame(tick);
     return () => cancelAnimationFrame(frame);
-  }, [value, motionEnabled]);
-  return <><span aria-hidden="true">{display.toLocaleString(undefined, { maximumFractionDigits: Number.isInteger(value) ? 0 : 2 })}</span><span className="sr-only">{value.toLocaleString()}</span></>;
+  }, [value, reduced]);
+  return <><span aria-hidden="true">{(reduced ? value : display).toLocaleString(undefined, { maximumFractionDigits: Number.isInteger(value) ? 0 : 2 })}</span><span className="sr-only">{value.toLocaleString()}</span></>;
 }
 
 export const StatTile: React.FC<StatTileProps> = ({
@@ -71,7 +69,7 @@ export const StatTile: React.FC<StatTileProps> = ({
         <span>{label}</span>
         {Icon && <span className="stat-icon"><Icon size={17} strokeWidth={1.6} /></span>}
       </div>
-      <div className={`stat-value ${typeof value === 'string' && value.length > 13 ? 'stat-value-text' : ''}`}>
+      <div className={`stat-value ${typeof value === 'string' && value.length > 10 ? 'stat-value-text' : ''}`}>
         {typeof value === 'number' ? <AnimatedValue value={value} /> : value}
       </div>
       {caption && <div className="stat-caption">{caption}</div>}

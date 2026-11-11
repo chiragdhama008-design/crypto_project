@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import { Link } from 'react-router-dom';
+import { Link, useNavigate } from 'react-router-dom';
 import { ArrowUpRight, ArrowRight, Cpu, Layers, Network, ShieldAlert, Database, ScanLine, Info, RefreshCw, ShieldCheck, CircleHelp } from 'lucide-react';
 import { AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer } from 'recharts';
 import { api } from '../services/api';
@@ -15,28 +15,21 @@ import { NetworkMotif } from '../components/common/NetworkMotif';
 import { useMotion } from '../context/MotionContext';
 
 export function Overview() {
-  const [data, setData] = useState<DashboardOverview | null>(null);
-  const [index, setIndex] = useState<DatasetStatus | null>(null);
-  const [queue, setQueue] = useState<HighRiskQueueResponse | null>(null);
-  const [model, setModel] = useState<ModelSummary | null>(null);
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState<string | null>(null);
+  const navigate = useNavigate();
   const [revision, setRevision] = useState(0);
+  const [snapshot, setSnapshot] = useState<{ revision: number; data: DashboardOverview | null; index: DatasetStatus | null; queue: HighRiskQueueResponse | null; model: ModelSummary | null; error: string | null }>({ revision: -1, data: null, index: null, queue: null, model: null, error: null });
+  const loading = snapshot.revision !== revision;
+  const { data, index, queue, model } = snapshot;
+  const error = loading ? null : snapshot.error;
   const [illicitOnly, setIllicitOnly] = useState(false);
   const { motionEnabled } = useMotion();
 
   useEffect(() => {
     let active = true;
-    setLoading(true);
     Promise.allSettled([api.getDashboard(), api.getDatasetStatus(), api.getHighRiskQueue({ limit: 5 }), api.listModels()]).then(([dashboardResult, indexResult, queueResult, modelsResult]) => {
       if (!active) return;
-      if (dashboardResult.status === 'fulfilled') { setData(dashboardResult.value); setError(null); }
-      else setError(dashboardResult.reason?.message || 'The dashboard could not be loaded.');
-      setIndex(indexResult.status === 'fulfilled' ? indexResult.value : null);
-      setQueue(queueResult.status === 'fulfilled' ? queueResult.value : null);
       const models = modelsResult.status === 'fulfilled' ? modelsResult.value.models : [];
-      setModel(models.find((item) => item.is_active) || null);
-      setLoading(false);
+      setSnapshot({ revision, data: dashboardResult.status === 'fulfilled' ? dashboardResult.value : null, error: dashboardResult.status === 'rejected' ? dashboardResult.reason?.message || 'The dashboard could not be loaded.' : null, index: indexResult.status === 'fulfilled' ? indexResult.value : null, queue: queueResult.status === 'fulfilled' ? queueResult.value : null, model: models.find((item) => item.is_active) || null });
     });
     return () => { active = false; };
   }, [revision]);
@@ -120,7 +113,7 @@ export function Overview() {
     <section className="overview-grid" aria-label="Scored transactions and model evaluation">
       <div className="panel-surface overflow-hidden">
         <div className="section-bar border-b border-line"><div><h2 className="section-heading">Scored transactions</h2><p className="section-description">Highest stored risk scores in your index</p></div><Link to="/risk" className="text-link">View queue<ArrowRight size={13} /></Link></div>
-        {queue === null ? <EmptyState tone="error" title="Queue unavailable" description="The risk service could not be reached. Refresh the overview to retry." /> : queue.transactions.length === 0 ? <EmptyState icon={ShieldCheck} title="No scored transactions yet" description="When indexed transactions have risk scores, your highest-priority records will appear here." actionLabel="Review dataset" onAction={() => { window.location.href = '/dataset'; }} /> : <div className="overflow-x-auto"><table className="tx-table"><thead><tr><th>Transaction</th><th>Ground truth</th><th>Risk</th><th>Inspect</th></tr></thead><tbody>{queue.transactions.map((tx) => <tr key={tx.transaction_id}><td className="font-mono text-xs">#{tx.transaction_id}</td><td><LabelBadge label={tx.known_label} /></td><td><RiskBadge level={tx.risk_level} score={tx.risk_score} /></td><td><Link to={`/transactions/${tx.transaction_id}`} className="text-link" aria-label={`Inspect transaction ${tx.transaction_id}`}><ArrowUpRight size={16} /></Link></td></tr>)}</tbody></table></div>}
+        {queue === null ? <EmptyState tone="error" title="Queue unavailable" description="The risk service could not be reached. Refresh the overview to retry." /> : queue.transactions.length === 0 ? <EmptyState icon={ShieldCheck} title="No scored transactions yet" description="When indexed transactions have risk scores, your highest-priority records will appear here." actionLabel="Review dataset" onAction={() => navigate('/dataset')} /> : <div className="overflow-x-auto"><table className="tx-table"><thead><tr><th>Transaction</th><th>Ground truth</th><th>Risk</th><th>Inspect</th></tr></thead><tbody>{queue.transactions.map((tx) => <tr key={tx.transaction_id}><td className="font-mono text-xs">#{tx.transaction_id}</td><td><LabelBadge label={tx.known_label} /></td><td><RiskBadge level={tx.risk_level} score={tx.risk_score} /></td><td><Link to={`/transactions/${tx.transaction_id}`} className="text-link" aria-label={`Inspect transaction ${tx.transaction_id}`}><ArrowUpRight size={16} /></Link></td></tr>)}</tbody></table></div>}
       </div>
       <div className="panel-surface model-summary">
         <div className="flex items-center justify-between"><span className="badge-pill badge-unknown">Historical evaluation</span><Cpu size={19} className="text-accent" /></div>

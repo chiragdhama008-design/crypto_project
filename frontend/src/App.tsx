@@ -36,7 +36,6 @@ function Workspace() {
   }, []);
 
   useEffect(() => {
-    setMobileMenuOpen(false);
     mainRef.current?.scrollTo({ top: 0 });
     if (!firstRoute.current) mainRef.current?.focus({ preventScroll: true });
     firstRoute.current = false;
