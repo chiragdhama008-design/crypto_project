@@ -9,20 +9,25 @@ interface LabelBadgeProps {
 export const LabelBadge: React.FC<LabelBadgeProps> = ({ label, isPrediction = false }) => {
   const norm = (label || 'UNKNOWN').toUpperCase();
 
-  let badgeClass = 'badge-medium';
+  let badgeClass = 'badge-unknown';
+  let dotColor = 'bg-signal-unknown';
+
   if (norm === 'ILLICIT') {
-    badgeClass = 'badge-hard';
+    badgeClass = 'badge-illicit';
+    dotColor = 'bg-signal-illicit';
   } else if (norm === 'LICIT') {
-    badgeClass = 'badge-easy';
+    badgeClass = 'badge-licit';
+    dotColor = 'bg-signal-licit';
   }
 
   return (
     <span
-      className={`${badgeClass} font-mono uppercase tracking-wider text-[10px]`}
+      className={`badge-pill ${badgeClass}`}
       title={isPrediction ? `Model Prediction: ${norm}` : `Dataset Ground Truth: ${norm}`}
     >
-      {isPrediction && <span className="mr-1 text-[9px] opacity-70">PRED:</span>}
-      {norm}
+      <span className={`w-1.5 h-1.5 rounded-full ${dotColor}`} aria-hidden="true" />
+      {isPrediction && <span className="opacity-70 text-[10px]">Model</span>}
+      <span>{norm.charAt(0) + norm.slice(1).toLowerCase()}</span>
     </span>
   );
 };

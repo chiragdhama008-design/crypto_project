@@ -1,17 +1,21 @@
-import React, { useEffect, useState } from 'react';
+import React, { useCallback, useEffect, useState } from 'react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
 import {
   ShieldAlert,
   AlertTriangle,
   ArrowRight,
-  Filter,
-  CheckCircle,
+  CheckCircle2,
   RefreshCw,
-  Search,
   ChevronLeft,
-  ChevronRight
+  ChevronRight,
+  Flame,
+  LucideIcon,
 } from 'lucide-react';
 import { api } from '../services/api';
+import { TransactionSummary } from '../types/api';
+import { PageHeader } from '../components/common/PageHeader';
+import { StatTile, StatTone } from '../components/common/StatTile';
+import { TableRowsSkeleton } from '../components/common/LoadingSkeleton';
 import { RiskBadge } from '../components/common/RiskBadge';
 import { LabelBadge } from '../components/common/LabelBadge';
 
@@ -19,22 +23,24 @@ export const RiskAlerts: React.FC = () => {
   const navigate = useNavigate();
   const [searchParams, setSearchParams] = useSearchParams();
 
-  const levelFilter = searchParams.get('level') || 'CRITICAL';
+  const levelFilter = (searchParams.get('level') || 'CRITICAL').toUpperCase();
   const page = parseInt(searchParams.get('page') || '1', 10);
+  const limit = 25;
 
-  const [alerts, setAlerts] = useState<any[]>([]);
+  const [alerts, setAlerts] = useState<TransactionSummary[]>([]);
   const [total, setTotal] = useState(0);
   const [counts, setCounts] = useState({ critical: 0, high: 0, medium: 0, low: 0 });
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
-  const fetchAlerts = () => {
+  const fetchAlerts = useCallback(() => {
     setLoading(true);
-    api.getHighRiskQueue({
-      level: levelFilter || undefined,
-      page,
-      limit: 25,
-    })
+    api
+      .getHighRiskQueue({
+        level: levelFilter || undefined,
+        page,
+        limit,
+      })
       .then((res) => {
         setAlerts(res.transactions);
         setTotal(res.total);
@@ -48,11 +54,11 @@ export const RiskAlerts: React.FC = () => {
       })
       .catch((err) => setError(err.message))
       .finally(() => setLoading(false));
-  };
+  }, [levelFilter, page, limit]);
 
   useEffect(() => {
     fetchAlerts();
-  }, [levelFilter, page]);
+  }, [fetchAlerts]);
 
   const handleLevelChange = (lvl: string) => {
     const next = new URLSearchParams(searchParams);
@@ -61,189 +67,212 @@ export const RiskAlerts: React.FC = () => {
     setSearchParams(next);
   };
 
+  const handlePageChange = (nextPage: number) => {
+    const next = new URLSearchParams(searchParams);
+    next.set('page', nextPage.toString());
+    setSearchParams(next);
+  };
+
+  const tiers: Array<{
+    key: string;
+    label: string;
+    count: number;
+    caption: string;
+    tone: StatTone;
+    icon: LucideIcon;
+  }> = [
+    {
+      key: 'CRITICAL',
+      label: 'Critical Risk',
+      count: counts.critical,
+      caption: 'Score 81–100 · Immediate review',
+      tone: 'illicit',
+      icon: Flame,
+    },
+    {
+      key: 'HIGH',
+      label: 'High Risk',
+      count: counts.high,
+      caption: 'Score 61–80 · Elevated exposure',
+      tone: 'high',
+      icon: ShieldAlert,
+    },
+    {
+      key: 'MEDIUM',
+      label: 'Medium Risk',
+      count: counts.medium,
+      caption: 'Score 31–60 · Secondary triage',
+      tone: 'accent',
+      icon: AlertTriangle,
+    },
+    {
+      key: 'LOW',
+      label: 'Low Risk',
+      count: counts.low,
+      caption: 'Score 0–30 · Nominal baseline',
+      tone: 'licit',
+      icon: CheckCircle2,
+    },
+  ];
+
   return (
-    <div className="p-4 space-y-3.5 max-w-7xl mx-auto font-sans text-[#eff1f6]">
-      {/* Header - LeetCode Style */}
-      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 border-b border-[#333333] pb-3 font-mono">
-        <div>
-          <div className="flex items-center space-x-2">
-            <h1 className="text-base font-bold text-[#eff1f6] tracking-tight">
-              Risk & Alert Triage Queue
-            </h1>
-            <span className="text-[10px] font-semibold bg-[#ef4743]/15 text-[#ef4743] border border-[#ef4743]/30 px-2 py-0.5 rounded">
-              ANOMALY ENGINE
-            </span>
-          </div>
-          <p className="text-xs text-[#8c8c8c] mt-0.5">
-            Priority investigation queue flagged by ML probabilities, illicit exposure, and topology
-          </p>
-        </div>
-        <button
-          onClick={fetchAlerts}
-          disabled={loading}
-          className="px-3 py-1.5 bg-[#262626] border border-[#3e3e3e] hover:bg-[#333333] rounded text-xs font-medium text-[#eff1f6] shadow-sm flex items-center space-x-1.5 self-start transition-colors"
-        >
-          <RefreshCw className={`w-3.5 h-3.5 text-[#ffa116] ${loading ? 'animate-spin' : ''}`} />
-          <span>Refresh Queue</span>
-        </button>
-      </div>
+    <div className="px-4 sm:px-6 lg:px-8 py-6 max-w-[1440px] mx-auto space-y-5 animate-fade-up">
+      <PageHeader
+        eyebrow="COMPOSITE ANOMALY ENGINE"
+        badges={[
+          { label: `${levelFilter} QUEUE`, tone: levelFilter === 'CRITICAL' ? 'illicit' : 'accent' },
+          { label: `${total.toLocaleString()} FLAGGED`, tone: 'unknown' },
+        ]}
+        title="Risk & Alert Triage Queue"
+        subtitle="Prioritized investigative queue ordered by composite risk score (55% ML inference, 25% neighborhood illicit taint, 10% degree topology, 10% z-score anomalies)."
+        actions={
+          <button
+            type="button"
+            onClick={fetchAlerts}
+            disabled={loading}
+            className="btn-secondary"
+          >
+            <RefreshCw className={`w-4 h-4 text-accent ${loading ? 'animate-spin' : ''}`} />
+            <span>Refresh Queue</span>
+          </button>
+        }
+      />
 
-      {/* Severity Filter Tabs - LeetCode Difficulty Badges */}
-      <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 font-mono">
-        {[
-          { key: 'CRITICAL', label: 'Critical Risk', count: counts.critical, color: 'text-[#ef4743]', activeBorder: 'border-[#ef4743] bg-[#ef4743]/10' },
-          { key: 'HIGH', label: 'High Risk', count: counts.high, color: 'text-[#ffa116]', activeBorder: 'border-[#ffa116] bg-[#ffa116]/10' },
-          { key: 'MEDIUM', label: 'Medium Risk', count: counts.medium, color: 'text-[#ffc01e]', activeBorder: 'border-[#ffc01e] bg-[#ffc01e]/10' },
-          { key: 'LOW', label: 'Low Risk', count: counts.low, color: 'text-[#00b8a3]', activeBorder: 'border-[#00b8a3] bg-[#00b8a3]/10' },
-        ].map((tab) => {
-          const isActive = levelFilter === tab.key;
-          return (
-            <button
-              key={tab.key}
-              onClick={() => handleLevelChange(tab.key)}
-              className={`p-2.5 rounded border text-left transition-all ${
-                isActive
-                  ? `${tab.activeBorder} shadow-sm`
-                  : 'bg-[#262626] border-[#333333] hover:bg-[#2c2c2c]'
-              }`}
-            >
-              <div className="text-[10px] text-[#8c8c8c] uppercase font-semibold">{tab.label}</div>
-              <div className={`text-base font-bold font-mono mt-0.5 ${tab.color}`}>
-                {tab.count.toLocaleString()}
-              </div>
-            </button>
-          );
-        })}
-      </div>
+      {/* Interactive Tier Selector Grid */}
+      <section aria-label="Risk Severity Tiers" className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3.5">
+        {tiers.map((t) => (
+          <StatTile
+            key={t.key}
+            label={t.label}
+            value={t.count.toLocaleString()}
+            caption={t.caption}
+            tone={t.tone}
+            icon={t.icon}
+            active={levelFilter === t.key}
+            onClick={() => handleLevelChange(t.key)}
+          />
+        ))}
+      </section>
 
-      {/* Table Container */}
-      <div className="bg-[#262626] rounded border border-[#333333] shadow-sm overflow-hidden font-mono">
+      {/* Queue Table */}
+      <section className="panel-surface overflow-hidden">
         <div className="overflow-x-auto">
-          <table className="leetcode-table">
+          <table className="tx-table">
             <thead>
               <tr>
                 <th>Tx ID</th>
                 <th>Step</th>
                 <th>Ground Truth</th>
                 <th>Model Prediction</th>
-                <th>Probability</th>
+                <th>P(Illicit)</th>
                 <th>Risk Score</th>
-                <th>Risk Level</th>
+                <th>Severity</th>
                 <th>Degree</th>
-                <th className="text-right">Inspect</th>
+                <th className="text-right">Action</th>
               </tr>
             </thead>
             <tbody>
               {loading ? (
-                [...Array(10)].map((_, i) => (
-                  <tr key={i}>
-                    <td colSpan={9} className="py-2.5 px-4">
-                      <div className="h-4 bg-[#333333] rounded animate-pulse w-full"></div>
-                    </td>
-                  </tr>
-                ))
+                <TableRowsSkeleton rows={10} cols={9} />
               ) : error ? (
                 <tr>
-                  <td colSpan={9} className="py-8 text-center text-[#ef4743] text-xs">
-                    Error loading alerts: {error}
+                  <td colSpan={9} className="py-10 text-center text-signal-illicit text-xs font-mono">
+                    Error loading risk queue: {error}
                   </td>
                 </tr>
               ) : alerts.length === 0 ? (
                 <tr>
-                  <td colSpan={9} className="py-8 text-center text-[#8c8c8c] text-xs">
-                    No transactions matching risk tier "{levelFilter}".
+                  <td colSpan={9} className="py-12 text-center text-ink-muted text-xs font-mono">
+                    No indexed transactions found in the &ldquo;{levelFilter}&rdquo; risk tier.
                   </td>
                 </tr>
               ) : (
-                alerts.map((tx) => (
-                  <tr
-                    key={tx.transaction_id}
-                    onClick={() => navigate(`/transactions/${tx.transaction_id}`)}
-                    className="cursor-pointer hover:bg-[#2e2e2e] transition-colors"
-                  >
-                    <td className="font-bold text-[#eff1f6] hover:text-[#ffa116]">
-                      #{tx.transaction_id}
-                    </td>
-                    <td className="text-[#8c8c8c]">
-                      {tx.time_step}
-                    </td>
-                    <td>
-                      <LabelBadge label={tx.known_label} />
-                    </td>
-                    <td>
-                      {tx.prediction ? (
-                        <LabelBadge label={tx.prediction} isPrediction />
-                      ) : (
-                        <span className="text-[#6b7280] text-xs">—</span>
-                      )}
-                    </td>
-                    <td className="text-[#d1d5db]">
-                      {tx.prediction_probability !== null && tx.prediction_probability !== undefined
-                        ? `${(tx.prediction_probability * 100).toFixed(1)}%`
-                        : '—'}
-                    </td>
-                    <td>
-                      <span className="font-bold text-[#eff1f6]">{tx.risk_score}</span>
-                      <span className="text-[#6b7280] text-[10px]">/100</span>
-                    </td>
-                    <td>
-                      <RiskBadge score={tx.risk_score} level={tx.risk_level} showScore={false} />
-                    </td>
-                    <td className="text-[#8c8c8c] text-[11px]">
-                      {tx.total_degree} edges ({tx.in_degree}↓ {tx.out_degree}↑)
-                    </td>
-                    <td className="text-right">
-                      <span className="text-xs text-[#ffa116] hover:text-[#ffb84d] font-medium inline-flex items-center space-x-1">
-                        <span>Investigate</span>
-                        <ArrowRight className="w-3 h-3" />
-                      </span>
-                    </td>
-                  </tr>
-                ))
+                alerts.map((tx) => {
+                  const prob = tx.prediction_probability ?? tx.probability;
+                  const degree = tx.total_degree ?? (tx.in_degree || 0) + (tx.out_degree || 0);
+                  return (
+                    <tr
+                      key={tx.transaction_id}
+                      onClick={() => navigate(`/transactions/${tx.transaction_id}`)}
+                      className="cursor-pointer group"
+                    >
+                      <td className="font-mono font-semibold text-ink group-hover:text-accent tabular-nums">
+                        #{tx.transaction_id}
+                      </td>
+                      <td className="font-mono text-ink-secondary tabular-nums">
+                        Step {tx.time_step}
+                      </td>
+                      <td>
+                        <LabelBadge label={tx.known_label} />
+                      </td>
+                      <td>
+                        {tx.prediction ? (
+                          <LabelBadge label={tx.prediction} isPrediction />
+                        ) : (
+                          <span className="text-ink-muted font-mono">—</span>
+                        )}
+                      </td>
+                      <td className="font-mono text-ink-secondary tabular-nums">
+                        {prob !== null && prob !== undefined ? `${(prob * 100).toFixed(1)}%` : '—'}
+                      </td>
+                      <td className="font-mono tabular-nums">
+                        <span className="font-semibold text-ink">{tx.risk_score}</span>
+                        <span className="text-ink-muted text-[11px]"> / 100</span>
+                      </td>
+                      <td>
+                        <RiskBadge score={tx.risk_score} level={tx.risk_level} showScore={false} />
+                      </td>
+                      <td className="font-mono text-ink-muted text-xs tabular-nums">
+                        {degree} edges ({tx.in_degree || 0}↓ {tx.out_degree || 0}↑)
+                      </td>
+                      <td className="text-right">
+                        <span className="text-xs font-mono font-semibold text-accent inline-flex items-center gap-1">
+                          <span>Investigate</span>
+                          <ArrowRight className="w-3 h-3 group-hover:translate-x-0.5 transition-transform" />
+                        </span>
+                      </td>
+                    </tr>
+                  );
+                })
               )}
             </tbody>
           </table>
         </div>
 
-        {/* Pagination Bar */}
-        <div className="px-4 py-2 bg-[#202020] border-t border-[#333333] flex items-center justify-between text-xs text-[#8c8c8c]">
+        {/* Footer Pagination */}
+        <div className="px-5 py-3.5 bg-inset/60 border-t border-line flex flex-col sm:flex-row items-center justify-between gap-3 text-xs font-mono text-ink-muted tabular-nums">
           <div>
-            Showing <span className="text-[#eff1f6] font-semibold">{alerts.length > 0 ? (page - 1) * 25 + 1 : 0}</span> to{' '}
-            <span className="text-[#eff1f6] font-semibold">{Math.min(page * 25, total)}</span> of{' '}
-            <span className="text-[#eff1f6] font-semibold">{total.toLocaleString()}</span> entries
+            Showing{' '}
+            <span className="text-ink font-semibold">
+              {alerts.length > 0 ? (page - 1) * limit + 1 : 0}
+            </span>{' '}
+            to <span className="text-ink font-semibold">{Math.min(page * limit, total)}</span> of{' '}
+            <span className="text-ink font-semibold">{total.toLocaleString()}</span> alerts
           </div>
 
-          <div className="flex items-center space-x-2">
+          <div className="flex items-center gap-2">
             <button
-              onClick={() => {
-                const next = new URLSearchParams(searchParams);
-                next.set('page', Math.max(1, page - 1).toString());
-                setSearchParams(next);
-              }}
+              type="button"
+              onClick={() => handlePageChange(Math.max(1, page - 1))}
               disabled={page <= 1 || loading}
-              className="px-2.5 py-1 bg-[#2a2a2a] border border-[#3e3e3e] rounded text-[#eff1f6] disabled:opacity-30 hover:bg-[#333333] flex items-center space-x-1 transition-colors"
+              className="btn-secondary min-h-[34px] py-1 px-3 text-xs font-mono"
             >
               <ChevronLeft className="w-3.5 h-3.5" />
               <span>Prev</span>
             </button>
-            <span className="text-[#ffa116] font-bold">
-              Page {page}
-            </span>
+            <span className="px-2 text-accent font-semibold">Page {page}</span>
             <button
-              onClick={() => {
-                const next = new URLSearchParams(searchParams);
-                next.set('page', (page + 1).toString());
-                setSearchParams(next);
-              }}
-              disabled={alerts.length < 25 || loading}
-              className="px-2.5 py-1 bg-[#2a2a2a] border border-[#3e3e3e] rounded text-[#eff1f6] disabled:opacity-30 hover:bg-[#333333] flex items-center space-x-1 transition-colors"
+              type="button"
+              onClick={() => handlePageChange(page + 1)}
+              disabled={alerts.length < limit || page * limit >= total || loading}
+              className="btn-secondary min-h-[34px] py-1 px-3 text-xs font-mono"
             >
               <span>Next</span>
               <ChevronRight className="w-3.5 h-3.5" />
             </button>
           </div>
         </div>
-      </div>
+      </section>
     </div>
   );
 };

@@ -61,22 +61,28 @@ def update_case(case_id: int, req: CaseUpdateRequest, db: Session = Depends(get_
 def add_transactions(case_id: int, req: AddTransactionsRequest, db: Session = Depends(get_db)):
     if not req.transaction_ids:
         raise HTTPException(status_code=400, detail="Transaction IDs list cannot be empty")
-    return InvestigationService.add_transactions_to_case(
+    updated = InvestigationService.add_transactions_to_case(
         db=db,
         case_id=case_id,
         transaction_ids=req.transaction_ids,
         notes=req.notes
     )
+    if not updated:
+        raise HTTPException(status_code=404, detail="Investigation case not found")
+    return updated
 
 
 @router.post("/{case_id}/notes")
 def add_note(case_id: int, req: NoteCreateRequest, db: Session = Depends(get_db)):
     if not req.note.strip():
         raise HTTPException(status_code=400, detail="Note text cannot be empty")
-    return InvestigationService.add_note_to_case(
+    created_note = InvestigationService.add_note_to_case(
         db=db,
         case_id=case_id,
         note=req.note,
         transaction_id=req.transaction_id,
         author=req.author or "Investigator"
     )
+    if not created_note:
+        raise HTTPException(status_code=404, detail="Investigation case not found")
+    return created_note

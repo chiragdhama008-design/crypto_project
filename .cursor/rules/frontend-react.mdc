@@ -1,0 +1,21 @@
+---
+description: Frontend React 19, TypeScript, Cytoscape graph, and API contract conventions for TRACE-X
+globs: frontend/**
+alwaysApply: false
+---
+
+# TRACE-X Frontend Rules (Cursor)
+
+Follow [`ARCHITECTURE.md`](../../ARCHITECTURE.md) and [`SECURITY_AUDIT.md`](../../SECURITY_AUDIT.md) for all files under `frontend/`:
+
+1. **API Contract Sync:**
+   - Keep `frontend/src/types/api.ts` and `frontend/src/services/api.ts` strictly aligned with FastAPI JSON schemas (`backend/app/api/routes/*.py`, `backend/app/schemas/*.py`).
+   - Preserve `RiskAlerts.tsx` handling (`prediction_probability ?? probability`, `total_degree ?? (in + out)`), `Dataset.tsx` handling (`dataset_directory_name`), and `integrity_sha256` display in `CaseDetail.tsx` & `Reports.tsx`.
+2. **Dynamic Metrics & Honest Benchmark Labeling:**
+   - Never hardcode accuracy, F1 scores, or model names in JSX (`Overview.tsx` binds dynamically to `api.listModels()`; `ModelPerformance.tsx` derives test transaction counts dynamically and labels `unseen_20_transactions.json` as `"Precomputed Benchmark"`).
+3. **Security & Secrets Hygiene:**
+   - Never embed `SUPABASE_SERVICE_ROLE_KEY`, `DATABASE_URL`, `ADMIN_API_KEY`, or private credentials inside `frontend/` or `VITE_*` variables.
+   - Never inject unsanitized HTML (`dangerouslySetInnerHTML`, `innerHTML`) from notes, cases, transaction IDs, or API errors.
+4. **Graph Rendering & Verification:**
+   - Enforce bounded Cytoscape subgraph sizes (`max_nodes <= 200`) to prevent UI main-thread freezes.
+   - Run `npm --prefix frontend run lint` (`oxlint`) and `npm --prefix frontend run build` (`tsc -b && vite build`) when `frontend/node_modules` is present.

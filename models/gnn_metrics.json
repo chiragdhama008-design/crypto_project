@@ -23,7 +23,7 @@
     {
       "fpr": 0.0,
       "tpr": 0.0,
-      "threshold": Infinity
+      "threshold": null
     },
     {
       "fpr": 0.001,

@@ -30,22 +30,21 @@ def get_transaction_subgraph(
             break
 
         frontier_list = list(current_frontier)
-        # Query outgoing edges (source in frontier)
-        # Using parameterized query
+        # Query outgoing edges (source in frontier) with deterministic ordering
         out_edges = db.query(
             TransactionEdge.source_transaction_id,
             TransactionEdge.destination_transaction_id
         ).filter(
             TransactionEdge.source_transaction_id.in_(frontier_list)
-        ).limit(max_nodes).all()
+        ).order_by(TransactionEdge.id.asc()).limit(max_nodes).all()
 
-        # Query incoming edges (destination in frontier)
+        # Query incoming edges (destination in frontier) with deterministic ordering
         in_edges = db.query(
             TransactionEdge.source_transaction_id,
             TransactionEdge.destination_transaction_id
         ).filter(
             TransactionEdge.destination_transaction_id.in_(frontier_list)
-        ).limit(max_nodes).all()
+        ).order_by(TransactionEdge.id.asc()).limit(max_nodes).all()
 
         next_frontier: Set[int] = set()
 

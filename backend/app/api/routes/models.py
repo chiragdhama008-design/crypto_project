@@ -13,6 +13,7 @@ from sqlalchemy.orm import Session
 from backend.app.database import get_db
 from backend.app.models import ModelMetric
 from backend.app.config import settings
+from backend.app.ml.predict import normalize_model_name
 
 
 def sanitize_floats(obj):
@@ -114,6 +115,7 @@ def get_unseen_benchmark(model_name: str = "gradient_boosting"):
 def list_models(db: Session = Depends(get_db)):
     metrics_records = db.query(ModelMetric).all()
     models_list = []
+    active_key = normalize_model_name(settings.ACTIVE_MODEL)
 
     for m in metrics_records:
         models_list.append({
@@ -124,12 +126,12 @@ def list_models(db: Session = Depends(get_db)):
             "f1": m.f1,
             "roc_auc": m.roc_auc,
             "pr_auc": m.pr_auc,
-            "is_active": (m.model_name.lower().replace(" ", "_") == settings.ACTIVE_MODEL.lower().replace(" ", "_"))
+            "is_active": (normalize_model_name(m.model_name) == active_key)
         })
 
     # If DB doesn't have records yet, check disk cache
     if not models_list and MODEL_CACHE_DIR.exists():
-        for f in MODEL_CACHE_DIR.glob("*_metrics.json"):
+        for f in sorted(MODEL_CACHE_DIR.glob("*_metrics.json")):
             try:
                 with open(f, "r", encoding="utf-8") as jf:
                     data = json.load(jf)
@@ -141,7 +143,7 @@ def list_models(db: Session = Depends(get_db)):
                         "f1": data["f1"],
                         "roc_auc": data["roc_auc"],
                         "pr_auc": data["pr_auc"],
-                        "is_active": True
+                        "is_active": (normalize_model_name(data["model_name"]) == active_key)
                     })
             except Exception:
                 pass

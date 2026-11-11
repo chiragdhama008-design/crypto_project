@@ -66,7 +66,8 @@ def run_ingestion(data_dir: str, limit: int = None, edges_limit: int = None, bat
     model_path = Path("models/gradient_boosting.joblib")
     if model_path.exists():
         try:
-            active_model = joblib.load(model_path)
+            from backend.app.ml.predict import load_model
+            active_model = load_model("gradient_boosting")
             print(f"[ML Pipeline] Loaded active model for inference: {model_path}")
         except Exception as e:
             print(f"[ML Pipeline] Warning: Could not load model: {e}")
@@ -139,6 +140,8 @@ def run_ingestion(data_dir: str, limit: int = None, edges_limit: int = None, bat
                         ml_probability=prob,
                         graph_metrics={
                             "known_illicit_neighbors": illicit_n,
+                            "suspicious_neighbors_count": 0,
+                            "illicit_neighborhood_ratio": illicit_n / max(n_tx.total_degree, 1),
                             "total_neighbors": n_tx.total_degree
                         },
                         features=n_tx.features
@@ -149,15 +152,19 @@ def run_ingestion(data_dir: str, limit: int = None, edges_limit: int = None, bat
                 else:
                     pred = None
                     prob_val = None
-                    if label_str == "ILLICIT":
-                        final_score = 92
-                        final_level = "CRITICAL"
-                    elif label_str == "LICIT":
-                        final_score = 12
-                        final_level = "LOW"
-                    else:
-                        final_score = 35
-                        final_level = "MEDIUM"
+                    score, level, _ = calculate_risk_score(
+                        known_label=label_str,
+                        ml_probability=0.0,
+                        graph_metrics={
+                            "known_illicit_neighbors": illicit_n,
+                            "suspicious_neighbors_count": 0,
+                            "illicit_neighborhood_ratio": illicit_n / max(n_tx.total_degree, 1),
+                            "total_neighbors": n_tx.total_degree
+                        },
+                        features=n_tx.features
+                    )
+                    final_score = score
+                    final_level = level.value
 
                 tx_records.append({
                     "transaction_id": n_tx.transaction_id,
@@ -250,7 +257,7 @@ def run_ingestion(data_dir: str, limit: int = None, edges_limit: int = None, bat
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description="Ingest Elliptic dataset into TRACE-X database")
-    parser.add_argument("--data-dir", default=os.getenv("DATASET_PATH", r"D:\archive (1)\elliptic_bitcoin_dataset"),
+    parser.add_argument("--data-dir", default=os.getenv("DATASET_PATH", "data/elliptic_bitcoin_dataset"),
                         help="Path to directory containing Elliptic CSV files")
     parser.add_argument("--limit", type=int, default=None,
                         help="Limit number of transactions to ingest (useful for testing)")

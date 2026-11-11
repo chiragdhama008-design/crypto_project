@@ -2,9 +2,9 @@
 Pydantic schemas for Risk Engine, Models, Cases, Reports, and Dashboard.
 """
 
-from typing import List, Optional, Dict, Any
+from typing import List, Optional, Dict, Any, Literal
 from datetime import datetime
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, field_validator
 
 
 # --- Risk & Alerts Schemas ---
@@ -14,10 +14,12 @@ class HighRiskTransactionItem(BaseModel):
     known_label: str
     prediction: Optional[str] = None
     probability: Optional[float] = None
+    prediction_probability: Optional[float] = None
     risk_score: int
     risk_level: str
     in_degree: int
     out_degree: int
+    total_degree: int = 0
     illicit_neighbor_count: int = 0
     trigger_reasons: List[str] = Field(default_factory=list)
 
@@ -84,26 +86,33 @@ class ModelMetricsResponse(BaseModel):
 
 # --- Investigation Cases Schemas ---
 class CaseCreateRequest(BaseModel):
-    case_name: str
-    description: Optional[str] = None
+    case_name: str = Field(..., min_length=1, max_length=256)
+    description: Optional[str] = Field(default=None, max_length=4000)
     initial_transactions: Optional[List[int]] = None
 
 
 class CaseUpdateRequest(BaseModel):
-    case_name: Optional[str] = None
-    description: Optional[str] = None
-    status: Optional[str] = None  # 'OPEN', 'UNDER REVIEW', 'CLOSED'
+    case_name: Optional[str] = Field(default=None, min_length=1, max_length=256)
+    description: Optional[str] = Field(default=None, max_length=4000)
+    status: Optional[Literal["OPEN", "UNDER REVIEW", "CLOSED"]] = None
+
+    @field_validator("status", mode="before")
+    @classmethod
+    def normalize_status(cls, v):
+        if v is None:
+            return v
+        return str(v).strip().upper()
 
 
 class NoteCreateRequest(BaseModel):
     transaction_id: Optional[int] = None
-    note: str
-    author: Optional[str] = "Investigator"
+    note: str = Field(..., min_length=1, max_length=4000)
+    author: Optional[str] = Field(default="Investigator", max_length=64)
 
 
 class AddTransactionsRequest(BaseModel):
-    transaction_ids: List[int]
-    notes: Optional[str] = None
+    transaction_ids: List[int] = Field(..., min_length=1, max_length=500)
+    notes: Optional[str] = Field(default=None, max_length=2000)
 
 
 class InvestigationNoteResponse(BaseModel):

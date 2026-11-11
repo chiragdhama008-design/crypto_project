@@ -107,7 +107,7 @@ def inspect_dataset(dataset_dir: str):
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description="Inspect Elliptic Bitcoin Dataset")
-    parser.add_argument("--data-dir", default=os.getenv("DATASET_PATH", r"D:\archive (1)\elliptic_bitcoin_dataset"),
+    parser.add_argument("--data-dir", default=os.getenv("DATASET_PATH", "data/elliptic_bitcoin_dataset"),
                         help="Path to directory containing Elliptic CSV files")
     args = parser.parse_args()
     inspect_dataset(args.data_dir)

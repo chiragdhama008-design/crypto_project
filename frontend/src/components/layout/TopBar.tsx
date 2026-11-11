@@ -1,163 +1,129 @@
-import React, { useState, useEffect, useRef } from 'react';
-import { useNavigate } from 'react-router-dom';
-import { Search, Database, Cpu, ArrowRight, Shield, Terminal } from 'lucide-react';
+import { useState, useEffect, useRef, type FormEvent } from 'react';
+import { useNavigate, useLocation } from 'react-router-dom';
+import { Search, Database, ArrowUpRight, Menu, Sun, Moon, ChevronRight, Pause, Play, Command, CornerDownLeft, Network, Layers, ShieldAlert, Briefcase, Cpu, BarChart3, FileText, BookOpen, LayoutDashboard } from 'lucide-react';
 import { api } from '../../services/api';
-import { SystemHealth } from '../../types/api';
+import type { SystemHealth } from '../../types/api';
+import { useTheme } from '../../context/ThemeContext';
+import { useMotion } from '../../context/MotionContext';
+import { Modal } from '../common/Modal';
 
-export const TopBar: React.FC = () => {
+interface TopBarProps { onOpenMobileMenu: () => void; health: SystemHealth | null }
+
+const destinations = [
+  { path: '/', label: 'Overview', section: 'Workspace', icon: LayoutDashboard },
+  { path: '/risk', label: 'Risk & alerts', section: 'Workspace', icon: ShieldAlert },
+  { path: '/transactions', label: 'Transactions', section: 'Workspace', icon: Layers },
+  { path: '/graph', label: 'Graph explorer', section: 'Workspace', icon: Network },
+  { path: '/investigations', label: 'Investigations', section: 'Workspace', icon: Briefcase },
+  { path: '/models', label: 'Model evaluation', section: 'Intelligence', icon: Cpu },
+  { path: '/analytics', label: 'Analytics', section: 'Intelligence', icon: BarChart3 },
+  { path: '/reports', label: 'Reports', section: 'Intelligence', icon: FileText },
+  { path: '/dataset', label: 'Dataset', section: 'Resources', icon: Database },
+  { path: '/methodology', label: 'Methodology', section: 'Resources', icon: BookOpen },
+];
+
+type SearchResult = Awaited<ReturnType<typeof api.searchTransactions>>[number];
+
+export function TopBar({ onOpenMobileMenu, health }: TopBarProps) {
   const navigate = useNavigate();
-  const [searchQuery, setSearchQuery] = useState('');
-  const [searchResults, setSearchResults] = useState<any[]>([]);
-  const [isSearching, setIsSearching] = useState(false);
-  const [showDropdown, setShowDropdown] = useState(false);
-  const [health, setHealth] = useState<SystemHealth | null>(null);
-  const searchRef = useRef<HTMLDivElement>(null);
+  const location = useLocation();
+  const { theme, toggleTheme } = useTheme();
+  const { motionEnabled, toggleMotion } = useMotion();
+  const [open, setOpen] = useState(false);
+  const [query, setQuery] = useState('');
+  const [results, setResults] = useState<SearchResult[]>([]);
+  const [searching, setSearching] = useState(false);
+  const [searchError, setSearchError] = useState<string | null>(null);
+  const [selected, setSelected] = useState(0);
+  const inputRef = useRef<HTMLInputElement>(null);
+
+  const current = destinations.find((item) => item.path === location.pathname) || (location.pathname.startsWith('/cases/') ? { section: 'Workspace', label: 'Investigation' } : { section: 'Workspace', label: 'Transaction detail' });
+  const matches = destinations.filter((item) => !query.trim() || item.label.toLowerCase().includes(query.trim().toLowerCase()));
+  const options = [...matches.map((item) => ({ ...item, description: item.section })), ...results.map((tx) => ({ path: `/transactions/${tx.transaction_id}`, label: `Transaction #${tx.transaction_id}`, icon: Layers, description: `Step ${tx.time_step} / ${tx.known_label.toLowerCase()}` }))];
 
   useEffect(() => {
-    api.getHealth()
-      .then(setHealth)
-      .catch((err) => console.warn('Health fetch error:', err));
-  }, []);
-
-  useEffect(() => {
-    if (!searchQuery.trim()) {
-      setSearchResults([]);
-      setShowDropdown(false);
-      return;
-    }
-
-    const timer = setTimeout(async () => {
-      setIsSearching(true);
-      try {
-        const results = await api.searchTransactions(searchQuery.trim());
-        setSearchResults(results);
-        setShowDropdown(true);
-      } catch (err) {
-        console.warn('Search error:', err);
-      } finally {
-        setIsSearching(false);
-      }
-    }, 200);
-
-    return () => clearTimeout(timer);
-  }, [searchQuery]);
-
-  // Click outside to dismiss search
-  useEffect(() => {
-    const handleClickOutside = (e: MouseEvent) => {
-      if (searchRef.current && !searchRef.current.contains(e.target as Node)) {
-        setShowDropdown(false);
+    const handleShortcut = (event: KeyboardEvent) => {
+      const target = event.target as HTMLElement;
+      const editing = ['INPUT', 'TEXTAREA', 'SELECT'].includes(target.tagName) || target.isContentEditable;
+      if (((event.key.toLowerCase() === 'k' && (event.ctrlKey || event.metaKey)) || (event.key === '/' && !editing && !event.ctrlKey && !event.metaKey && !event.altKey)) && !document.querySelector('dialog[open]')) {
+        event.preventDefault();
+        setOpen(true);
       }
     };
-    document.addEventListener('mousedown', handleClickOutside);
-    return () => document.removeEventListener('mousedown', handleClickOutside);
+    window.addEventListener('keydown', handleShortcut);
+    return () => window.removeEventListener('keydown', handleShortcut);
   }, []);
 
-  const handleSelectTransaction = (txId: number) => {
-    setShowDropdown(false);
-    setSearchQuery('');
-    navigate(`/transactions/${txId}`);
-  };
+  useEffect(() => {
+    if (open) { setSelected(0); inputRef.current?.focus(); }
+    else { setQuery(''); setResults([]); setSearchError(null); }
+  }, [open]);
 
-  const handleSearchSubmit = (e: React.FormEvent) => {
-    e.preventDefault();
-    if (searchQuery.trim()) {
-      setShowDropdown(false);
-      navigate(`/transactions?search=${encodeURIComponent(searchQuery.trim())}`);
-    }
-  };
+  useEffect(() => {
+    setSelected(0);
+    setResults([]);
+    setSearchError(null);
+    if (!open || !query.trim()) { setSearching(false); return; }
+    const controller = new AbortController();
+    setSearching(true);
+    const timer = setTimeout(() => {
+      api.searchTransactions(query.trim(), controller.signal)
+        .then((data) => { if (!controller.signal.aborted) setResults(data); })
+        .catch((error: Error) => { if (!controller.signal.aborted) setSearchError(error.message || 'Transaction search is unavailable.'); })
+        .finally(() => { if (!controller.signal.aborted) setSearching(false); });
+    }, 220);
+    return () => { clearTimeout(timer); controller.abort(); };
+  }, [query, open]);
 
-  return (
-    <header className="h-11 bg-[#222222] border-b border-[#333333] px-4 flex items-center justify-between sticky top-0 z-30 flex-shrink-0">
-      {/* Global Transaction Search - LeetCode Style */}
-      <div className="relative w-80 lg:w-96" ref={searchRef}>
-        <form onSubmit={handleSearchSubmit} className="relative flex items-center">
-          <Search className="w-3.5 h-3.5 absolute left-2.5 text-[#8a8a8a] pointer-events-none" />
-          <input
-            type="text"
-            placeholder="Search transaction (e.g. 230425980)..."
-            value={searchQuery}
-            onChange={(e) => setSearchQuery(e.target.value)}
-            onFocus={() => {
-              if (searchResults.length > 0) setShowDropdown(true);
-            }}
-            className="w-full pl-8 pr-8 py-1 text-xs bg-[#1a1a1a] border border-[#3e3e3e] rounded text-[#eff1f6] placeholder-[#6b7280] focus:outline-none focus:border-[#ffa116] font-mono transition-colors"
-          />
-          <span className="absolute right-2 text-[10px] font-mono bg-[#2a2a2a] text-[#8c8c8c] px-1 py-0.5 rounded border border-[#3e3e3e] pointer-events-none">
-            /
-          </span>
-          {isSearching && (
-            <div className="absolute right-7 top-2">
-              <div className="w-2.5 h-2.5 border-2 border-[#ffa116] border-t-transparent rounded-full animate-spin"></div>
-            </div>
-          )}
-        </form>
+  useEffect(() => {
+    if (open) document.getElementById(`command-option-${selected}`)?.scrollIntoView({ block: 'nearest' });
+  }, [selected, open]);
 
-        {/* Auto-suggest dropdown */}
-        {showDropdown && searchResults.length > 0 && (
-          <div className="absolute top-full left-0 right-0 mt-1 bg-[#262626] border border-[#3e3e3e] rounded shadow-2xl max-h-72 overflow-y-auto z-50">
-            <div className="px-2.5 py-1 text-[10px] font-mono font-semibold text-[#8c8c8c] uppercase tracking-wider bg-[#1f1f1f] border-b border-[#333333]">
-              Matching Transactions ({searchResults.length})
-            </div>
-            {searchResults.map((tx) => (
-              <div
-                key={tx.transaction_id}
-                onClick={() => handleSelectTransaction(tx.transaction_id)}
-                className="px-3 py-2 border-b border-[#2d2d2d] hover:bg-[#303030] cursor-pointer flex items-center justify-between group transition-colors"
-              >
-                <div>
-                  <div className="text-xs font-mono font-medium text-[#eff1f6] group-hover:text-[#ffa116] flex items-center space-x-1.5">
-                    <span>TX #{tx.transaction_id}</span>
-                    <span className="text-[10px] text-[#8c8c8c] font-sans">Step {tx.time_step}</span>
-                  </div>
-                  <div className="text-[10px] text-[#9ca3af] flex items-center space-x-2 mt-0.5 font-mono">
-                    <span>Label: {tx.known_label}</span>
-                    {tx.prediction && <span>| Model: {tx.prediction}</span>}
-                  </div>
-                </div>
-                <div className="flex items-center space-x-2">
-                  <span className={`text-[10px] font-mono font-semibold px-1.5 py-0.5 rounded ${
-                    tx.risk_level === 'CRITICAL' ? 'bg-[#ef4743]/20 text-[#ef4743] border border-[#ef4743]/40' :
-                    tx.risk_level === 'HIGH' ? 'bg-[#ffa116]/20 text-[#ffa116] border border-[#ffa116]/40' :
-                    tx.risk_level === 'MEDIUM' ? 'bg-[#ffc01e]/20 text-[#ffc01e] border border-[#ffc01e]/40' :
-                    'bg-[#00b8a3]/20 text-[#00b8a3] border border-[#00b8a3]/40'
-                  }`}>
-                    Risk {tx.risk_score}
-                  </span>
-                  <ArrowRight className="w-3 h-3 text-[#6b7280] group-hover:text-[#ffa116] transition-colors" />
-                </div>
-              </div>
-            ))}
-          </div>
-        )}
+  useEffect(() => { document.title = `${current.label} | TRACE-X`; }, [current.label]);
+
+  function choose(path: string) { setOpen(false); navigate(path); }
+  function submit(event: FormEvent) {
+    event.preventDefault();
+    if (options[selected]) choose(options[selected].path);
+    else if (query.trim()) choose(`/transactions?search=${encodeURIComponent(query.trim())}`);
+  }
+
+  return <>
+    <header className="workspace-topbar print:hidden">
+      <div className="flex items-center gap-3 min-w-0">
+        <button type="button" className="icon-button lg:hidden" onClick={onOpenMobileMenu} aria-label="Open navigation menu"><Menu size={20} /></button>
+        <div className="workspace-breadcrumb">
+          <span className="hidden sm:inline">{current.section}</span><ChevronRight size={12} className="hidden sm:block opacity-50" /><strong className="truncate">{current.label}</strong>
+        </div>
       </div>
-
-      {/* Right Side: System Status Indicators */}
-      <div className="flex items-center space-x-2 text-xs">
-        {/* Database Status */}
-        <div className="hidden sm:flex items-center space-x-1.5 px-2 py-0.5 rounded bg-[#1a1a1a] border border-[#333333] font-mono">
-          <Database className="w-3 h-3 text-[#8c8c8c]" />
-          <span className="text-[10px] text-[#d1d5db]">
-            {health?.database.provider === 'Local Developer Storage' ? 'SQLite (Local)' : health?.database.provider || 'PostgreSQL'}
-          </span>
-          <span className={`w-1.5 h-1.5 rounded-full ${health?.database.connected ? 'bg-[#00b8a3]' : 'bg-[#ffc01e]'}`}></span>
-        </div>
-
-        {/* Active ML Model */}
-        <div className="hidden md:flex items-center space-x-1.5 px-2 py-0.5 rounded bg-[#1a1a1a] border border-[#333333] font-mono">
-          <Cpu className="w-3 h-3 text-[#8c8c8c]" />
-          <span className="text-[10px] text-[#d1d5db] capitalize">
-            {health?.active_model ? health.active_model.replace('_', ' ') : 'Gradient Boosting'}
-          </span>
-          <span className="text-[9px] text-[#ffa116] font-semibold uppercase bg-[#ffa116]/10 px-1 rounded">Active</span>
-        </div>
-
-        {/* LeetCode Forensic Console Badge */}
-        <div className="flex items-center space-x-1 px-2 py-0.5 rounded bg-[#2cbb5d]/15 text-[#2cbb5d] border border-[#2cbb5d]/30 font-mono text-[10px] font-semibold">
-          <Terminal className="w-3 h-3" />
-          <span>CONSOLE v1.0</span>
-        </div>
+      <div className="topbar-tools">
+        <button type="button" className="command-trigger" onClick={() => setOpen(true)} aria-label="Search workspace and transactions" aria-haspopup="dialog"><Search size={14} /><span>Search workspace...</span><kbd>Ctrl K</kbd></button>
+        <button type="button" className="storage-status hidden xl:flex" onClick={() => navigate('/dataset')} title="View dataset and storage status"><span className={`status-dot ${health?.database.connected ? 'text-signal-licit' : ''}`} /><span>{health?.database.provider === 'Local Developer Storage' ? 'Local workspace' : health?.database.provider || 'Unverified connection'}</span></button>
+        <button type="button" className="icon-button" onClick={toggleMotion} title={motionEnabled ? 'Pause animations' : 'Enable animations'} aria-label={motionEnabled ? 'Pause animations' : 'Enable animations'} aria-pressed={!motionEnabled}>{motionEnabled ? <Pause size={15} /> : <Play size={15} />}</button>
+        <button type="button" className="icon-button" onClick={toggleTheme} title={theme === 'dark' ? 'Switch to light theme' : 'Switch to dark theme'} aria-label={theme === 'dark' ? 'Switch to light theme' : 'Switch to dark theme'}>{theme === 'dark' ? <Sun size={17} /> : <Moon size={17} />}</button>
       </div>
     </header>
-  );
-};
+    <Modal open={open} onClose={() => setOpen(false)} title="Search workspace" description="Find an indexed transaction or jump to a page." className="command-modal">
+      <form onSubmit={submit}>
+        <label className="sr-only" htmlFor="workspace-search">Transaction ID or page name</label>
+        <div className="relative">
+          <Search size={18} className="absolute left-3 top-3.5 text-ink-muted" />
+          <input ref={inputRef} id="workspace-search" autoComplete="off" autoFocus className="field-input pl-10" placeholder="Try a transaction ID, graph, or models..." value={query} onChange={(event) => setQuery(event.target.value)} role="combobox" aria-expanded="true" aria-controls="workspace-search-results" aria-autocomplete="list" aria-activedescendant={options[selected] ? `command-option-${selected}` : undefined} onKeyDown={(event) => {
+            if (event.key === 'ArrowDown' && options.length) { event.preventDefault(); setSelected((index) => (index + 1) % options.length); }
+            if (event.key === 'ArrowUp' && options.length) { event.preventDefault(); setSelected((index) => (index - 1 + options.length) % options.length); }
+          }} />
+        </div>
+        <div className="command-results" id="workspace-search-results" role="listbox" aria-label="Search results">
+          {options.map((item, index) => <button key={item.path} id={`command-option-${index}`} type="button" role="option" aria-selected={selected === index} className="command-option" onMouseEnter={() => setSelected(index)} onClick={() => choose(item.path)}>
+            <item.icon size={18} strokeWidth={1.6} /><span className="flex-1 min-w-0"><span className="block text-[12px]">{item.label}</span><small>{item.description}</small></span><CornerDownLeft size={14} className="opacity-40" />
+          </button>)}
+        </div>
+        <div role="status" className="text-[11px] text-ink-muted mt-2">
+          {searching ? 'Searching indexed transactions...' : searchError || (query.trim() && results.length === 0 ? 'No indexed transaction matches. Dataset reference records are not searchable until indexed.' : '')}
+        </div>
+        {query.trim() && !searching && <button type="button" className="text-link w-full" onClick={() => choose(`/transactions?search=${encodeURIComponent(query.trim())}`)}>Search the transaction ledger<ArrowUpRight size={14} /></button>}
+        <div className="command-footer"><span><kbd>Up / Down</kbd> Navigate</span><span><kbd>Enter</kbd> Open</span><span className="ml-auto"><Command size={12} className="inline mr-1" />Esc to close</span></div>
+      </form>
+    </Modal>
+  </>;
+}

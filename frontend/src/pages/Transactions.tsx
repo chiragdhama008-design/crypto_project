@@ -1,8 +1,18 @@
-import React, { useEffect, useState } from 'react';
+import React, { useCallback, useEffect, useState } from 'react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
-import { Search, RefreshCw, ChevronLeft, ChevronRight, ArrowRight, Filter, Terminal } from 'lucide-react';
+import {
+  Search,
+  RefreshCw,
+  ChevronLeft,
+  ChevronRight,
+  ArrowRight,
+  X,
+  AlertTriangle,
+} from 'lucide-react';
 import { api } from '../services/api';
 import { TransactionSummary } from '../types/api';
+import { PageHeader } from '../components/common/PageHeader';
+import { TableRowsSkeleton } from '../components/common/LoadingSkeleton';
 import { RiskBadge } from '../components/common/RiskBadge';
 import { LabelBadge } from '../components/common/LabelBadge';
 
@@ -16,7 +26,6 @@ export const Transactions: React.FC = () => {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
-  // Filters from URL or default
   const page = parseInt(searchParams.get('page') || '1', 10);
   const limit = 25;
   const labelFilter = searchParams.get('label') || '';
@@ -27,30 +36,35 @@ export const Transactions: React.FC = () => {
 
   const [searchInput, setSearchInput] = useState(search);
 
-  const fetchTransactions = () => {
+  useEffect(() => {
+    setSearchInput(search);
+  }, [search]);
+
+  const fetchTransactions = useCallback(() => {
     setLoading(true);
-    api.getTransactions({
-      page,
-      limit,
-      label: labelFilter || undefined,
-      prediction: predFilter || undefined,
-      risk_level: riskFilter || undefined,
-      time_step: timeStepFilter ? parseInt(timeStepFilter, 10) : undefined,
-      search: search || undefined,
-    })
+    api
+      .getTransactions({
+        page,
+        limit,
+        label: labelFilter || undefined,
+        prediction: predFilter || undefined,
+        risk_level: riskFilter || undefined,
+        time_step: timeStepFilter ? parseInt(timeStepFilter, 10) : undefined,
+        search: search || undefined,
+      })
       .then((res) => {
         setTransactions(res.transactions);
         setTotal(res.total);
-        setTotalPages(res.total_pages);
+        setTotalPages(Math.max(1, res.total_pages));
         setError(null);
       })
       .catch((err) => setError(err.message))
       .finally(() => setLoading(false));
-  };
+  }, [page, limit, labelFilter, predFilter, riskFilter, timeStepFilter, search]);
 
   useEffect(() => {
     fetchTransactions();
-  }, [page, labelFilter, predFilter, riskFilter, timeStepFilter, search]);
+  }, [fetchTransactions]);
 
   const updateParam = (key: string, value: string) => {
     const nextParams = new URLSearchParams(searchParams);
@@ -59,8 +73,15 @@ export const Transactions: React.FC = () => {
     } else {
       nextParams.delete(key);
     }
-    nextParams.set('page', '1');
+    if (key !== 'page') {
+      nextParams.set('page', '1');
+    }
     setSearchParams(nextParams);
+  };
+
+  const handleClearFilters = () => {
+    setSearchInput('');
+    setSearchParams({});
   };
 
   const handleSearchSubmit = (e: React.FormEvent) => {
@@ -68,96 +89,119 @@ export const Transactions: React.FC = () => {
     updateParam('search', searchInput.trim());
   };
 
-  return (
-    <div className="p-4 space-y-3.5 max-w-7xl mx-auto font-sans">
-      {/* LeetCode Header Banner */}
-      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 border-b border-[#333333] pb-3">
-        <div>
-          <div className="flex items-center space-x-2">
-            <h1 className="text-base font-bold text-[#eff1f6] tracking-tight font-mono">
-              Transaction Problem Set
-            </h1>
-            <span className="text-[11px] font-mono bg-[#333333] text-[#ffa116] px-2 py-0.5 rounded border border-[#444444]">
-              {total.toLocaleString()} indexed in DB / 203,769 total dataset
-            </span>
-          </div>
-          <p className="text-xs text-[#8c8c8c] mt-0.5 font-mono">
-            Ground-truth labeled and ML-inferred Bitcoin flow graph records
-          </p>
-        </div>
-        <button
-          onClick={fetchTransactions}
-          disabled={loading}
-          className="px-3 py-1.5 bg-[#262626] border border-[#3e3e3e] hover:bg-[#333333] rounded text-xs font-mono font-medium text-[#eff1f6] shadow-sm flex items-center space-x-1.5 self-start transition-colors"
-        >
-          <RefreshCw className={`w-3.5 h-3.5 text-[#ffa116] ${loading ? 'animate-spin' : ''}`} />
-          <span>Refresh</span>
-        </button>
-      </div>
+  const hasActiveFilters = Boolean(
+    labelFilter || predFilter || riskFilter || timeStepFilter || search
+  );
 
-      {/* LeetCode Filter Bar */}
-      <div className="bg-[#262626] p-2.5 rounded border border-[#333333] shadow-sm">
-        <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-5 gap-2">
-          {/* Search Box */}
-          <form onSubmit={handleSearchSubmit} className="relative sm:col-span-2">
-            <Search className="w-3.5 h-3.5 absolute left-2.5 top-2 text-[#8c8c8c] pointer-events-none" />
+  return (
+    <div className="px-4 sm:px-6 lg:px-8 py-6 max-w-[1440px] mx-auto space-y-5 animate-fade-up">
+      <PageHeader
+        eyebrow="BITCOIN UTXO LEDGER"
+        badges={[
+          { label: `${total.toLocaleString()} MATCHING RECORDS`, tone: 'accent' },
+          { label: '203,769 FULL GRAPH', tone: 'unknown' },
+        ]}
+        title="Transaction Ledger"
+        subtitle="Inspect ground-truth labels, ML illicit inference probabilities, composite risk tiers, and directed graph connectivity across indexed transactions."
+        actions={
+          <button
+            type="button"
+            onClick={fetchTransactions}
+            disabled={loading}
+            className="btn-secondary"
+          >
+            <RefreshCw className={`w-4 h-4 text-accent ${loading ? 'animate-spin' : ''}`} />
+            <span>Refresh</span>
+          </button>
+        }
+      />
+
+      {/* Filter Toolbar */}
+      <section aria-label="Transaction Filters" className="panel-surface p-4 space-y-3">
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-6 gap-2.5">
+          {/* ID Search */}
+          <form onSubmit={handleSearchSubmit} className="relative sm:col-span-2 lg:col-span-2">
+            <Search className="w-4 h-4 absolute left-3 top-1/2 -translate-y-1/2 text-ink-muted pointer-events-none" />
             <input
               type="text"
+              aria-label="Filter by transaction ID"
               placeholder="Search Transaction ID (e.g. 230425980)..."
               value={searchInput}
               onChange={(e) => setSearchInput(e.target.value)}
-              className="w-full pl-8 pr-3 py-1 text-xs bg-[#1a1a1a] border border-[#3e3e3e] rounded text-[#eff1f6] placeholder-[#6b7280] focus:outline-none focus:border-[#ffa116] font-mono"
+              className="field-input pl-9 pr-16 font-mono tabular-nums"
             />
+            <button
+              type="submit"
+              className="absolute right-1.5 top-1/2 -translate-y-1/2 px-2.5 py-1 rounded-md bg-elevated hover:bg-hoverbg border border-line text-[11px] font-mono text-ink transition-colors"
+            >
+              Find
+            </button>
           </form>
 
-          {/* Known Label Filter */}
+          {/* Ground Truth Label */}
           <div>
             <select
+              aria-label="Filter by ground truth label"
               value={labelFilter}
               onChange={(e) => updateParam('label', e.target.value)}
-              className="w-full text-xs py-1 px-2 bg-[#1a1a1a] border border-[#3e3e3e] rounded text-[#eff1f6] focus:outline-none focus:border-[#ffa116] font-mono"
+              className="field-input font-mono"
             >
-              <option value="">Label (All)</option>
-              <option value="ILLICIT">Known: ILLICIT (Hard)</option>
-              <option value="LICIT">Known: LICIT (Easy)</option>
-              <option value="UNKNOWN">Known: UNKNOWN (Medium)</option>
+              <option value="">Ground Truth: All</option>
+              <option value="ILLICIT">Label: ILLICIT</option>
+              <option value="LICIT">Label: LICIT</option>
+              <option value="UNKNOWN">Label: UNKNOWN</option>
             </select>
           </div>
 
-          {/* Prediction Filter */}
+          {/* Model Prediction */}
           <div>
             <select
+              aria-label="Filter by model prediction"
               value={predFilter}
               onChange={(e) => updateParam('prediction', e.target.value)}
-              className="w-full text-xs py-1 px-2 bg-[#1a1a1a] border border-[#3e3e3e] rounded text-[#eff1f6] focus:outline-none focus:border-[#ffa116] font-mono"
+              className="field-input font-mono"
             >
-              <option value="">Prediction (All)</option>
-              <option value="ILLICIT">Pred: ILLICIT</option>
-              <option value="LICIT">Pred: LICIT</option>
+              <option value="">Prediction: All</option>
+              <option value="ILLICIT">Predicted: ILLICIT</option>
+              <option value="LICIT">Predicted: LICIT</option>
             </select>
           </div>
 
-          {/* Risk Level Filter */}
+          {/* Risk Tier */}
           <div>
             <select
+              aria-label="Filter by risk tier"
               value={riskFilter}
               onChange={(e) => updateParam('risk_level', e.target.value)}
-              className="w-full text-xs py-1 px-2 bg-[#1a1a1a] border border-[#3e3e3e] rounded text-[#eff1f6] focus:outline-none focus:border-[#ffa116] font-mono"
+              className="field-input font-mono"
             >
-              <option value="">Risk Tier (All)</option>
-              <option value="CRITICAL">Critical (81-100)</option>
-              <option value="HIGH">High (61-80)</option>
-              <option value="MEDIUM">Medium (31-60)</option>
-              <option value="LOW">Low (0-30)</option>
+              <option value="">Risk Tier: All</option>
+              <option value="CRITICAL">Critical (81–100)</option>
+              <option value="HIGH">High (61–80)</option>
+              <option value="MEDIUM">Medium (31–60)</option>
+              <option value="LOW">Low (0–30)</option>
             </select>
           </div>
-        </div>
-      </div>
 
-      {/* LeetCode Table Container */}
-      <div className="bg-[#262626] rounded border border-[#333333] shadow-sm overflow-hidden">
+          {/* Clear Filter Action */}
+          <div className="flex items-center">
+            <button
+              type="button"
+              onClick={handleClearFilters}
+              disabled={!hasActiveFilters}
+              className="btn-secondary w-full font-mono text-xs"
+            >
+              <X className="w-3.5 h-3.5" />
+              <span>Reset Filters</span>
+            </button>
+          </div>
+        </div>
+      </section>
+
+      {/* Main Table Card */}
+      <section className="panel-surface overflow-hidden">
         <div className="overflow-x-auto">
-          <table className="leetcode-table">
+          <table className="tx-table">
             <thead>
               <tr>
                 <th>Tx ID</th>
@@ -166,30 +210,38 @@ export const Transactions: React.FC = () => {
                 <th>ML Prediction</th>
                 <th>Probability</th>
                 <th>Risk Score</th>
-                <th>Difficulty Tier</th>
-                <th>Degree (In/Out)</th>
+                <th>Risk Tier</th>
+                <th>Degree (In / Out)</th>
                 <th className="text-right">Action</th>
               </tr>
             </thead>
             <tbody>
               {loading ? (
-                [...Array(10)].map((_, i) => (
-                  <tr key={i}>
-                    <td colSpan={9} className="py-2.5 px-4">
-                      <div className="h-4 bg-[#333333] rounded animate-pulse w-full"></div>
-                    </td>
-                  </tr>
-                ))
+                <TableRowsSkeleton rows={10} cols={9} />
               ) : error ? (
                 <tr>
-                  <td colSpan={9} className="py-8 text-center text-[#ef4743] font-mono text-xs">
-                    Error loading transactions: {error}
+                  <td colSpan={9} className="py-10 text-center">
+                    <div className="inline-flex items-center gap-2 text-signal-illicit text-xs font-mono">
+                      <AlertTriangle className="w-4 h-4" />
+                      <span>Error loading transactions: {error}</span>
+                    </div>
                   </td>
                 </tr>
               ) : transactions.length === 0 ? (
                 <tr>
-                  <td colSpan={9} className="py-8 text-center text-[#8c8c8c] font-mono text-xs">
-                    No transactions found matching filter parameters.
+                  <td colSpan={9} className="py-12 text-center space-y-2">
+                    <div className="text-sm text-ink-secondary font-medium">
+                      No transactions found matching the selected filters.
+                    </div>
+                    {hasActiveFilters && (
+                      <button
+                        type="button"
+                        onClick={handleClearFilters}
+                        className="btn-secondary mt-2"
+                      >
+                        Clear Active Filters
+                      </button>
+                    )}
                   </td>
                 </tr>
               ) : (
@@ -197,13 +249,13 @@ export const Transactions: React.FC = () => {
                   <tr
                     key={tx.transaction_id}
                     onClick={() => navigate(`/transactions/${tx.transaction_id}`)}
-                    className="cursor-pointer hover:bg-[#2e2e2e] transition-colors"
+                    className="cursor-pointer group"
                   >
-                    <td className="font-mono font-bold text-[#eff1f6] hover:text-[#ffa116]">
+                    <td className="font-mono font-semibold text-ink group-hover:text-accent tabular-nums">
                       #{tx.transaction_id}
                     </td>
-                    <td className="font-mono text-[#8c8c8c]">
-                      {tx.time_step}
+                    <td className="font-mono text-ink-secondary tabular-nums">
+                      Step {tx.time_step}
                     </td>
                     <td>
                       <LabelBadge label={tx.known_label} />
@@ -212,28 +264,31 @@ export const Transactions: React.FC = () => {
                       {tx.prediction ? (
                         <LabelBadge label={tx.prediction} isPrediction />
                       ) : (
-                        <span className="text-[#6b7280] text-xs font-mono">—</span>
+                        <span className="text-ink-muted font-mono">—</span>
                       )}
                     </td>
-                    <td className="font-mono text-[#d1d5db]">
+                    <td className="font-mono text-ink-secondary tabular-nums">
                       {tx.prediction_probability !== null && tx.prediction_probability !== undefined
                         ? `${(tx.prediction_probability * 100).toFixed(1)}%`
                         : '—'}
                     </td>
-                    <td>
-                      <span className="font-mono font-bold text-[#eff1f6]">{tx.risk_score}</span>
-                      <span className="text-[#6b7280] text-[10px]">/100</span>
+                    <td className="font-mono tabular-nums">
+                      <span className="font-semibold text-ink">{tx.risk_score}</span>
+                      <span className="text-ink-muted text-[11px]"> / 100</span>
                     </td>
                     <td>
                       <RiskBadge score={tx.risk_score} level={tx.risk_level} showScore={false} />
                     </td>
-                    <td className="font-mono text-[#8c8c8c] text-[11px]">
-                      {tx.total_degree} <span className="text-[#6b7280]">({tx.in_degree}↓ {tx.out_degree}↑)</span>
+                    <td className="font-mono text-ink-secondary text-xs tabular-nums">
+                      {tx.total_degree}{' '}
+                      <span className="text-ink-muted">
+                        ({tx.in_degree}↓ {tx.out_degree}↑)
+                      </span>
                     </td>
                     <td className="text-right">
-                      <span className="text-xs text-[#ffa116] hover:text-[#ffb84d] font-mono font-medium inline-flex items-center space-x-1">
+                      <span className="text-xs font-mono font-semibold text-accent inline-flex items-center gap-1">
                         <span>Inspect</span>
-                        <ArrowRight className="w-3 h-3" />
+                        <ArrowRight className="w-3 h-3 group-hover:translate-x-0.5 transition-transform" />
                       </span>
                     </td>
                   </tr>
@@ -243,37 +298,43 @@ export const Transactions: React.FC = () => {
           </table>
         </div>
 
-        {/* LeetCode Pagination Bar */}
-        <div className="px-4 py-2 bg-[#202020] border-t border-[#333333] flex items-center justify-between text-xs text-[#8c8c8c] font-mono">
+        {/* Pagination Footer */}
+        <div className="px-5 py-3.5 bg-inset/60 border-t border-line flex flex-col sm:flex-row items-center justify-between gap-3 text-xs font-mono text-ink-muted tabular-nums">
           <div>
-            Showing <span className="text-[#eff1f6] font-semibold">{transactions.length > 0 ? (page - 1) * limit + 1 : 0}</span> to{' '}
-            <span className="text-[#eff1f6] font-semibold">{Math.min(page * limit, total)}</span> of{' '}
-            <span className="text-[#eff1f6] font-semibold">{total.toLocaleString()}</span> entries
+            Showing{' '}
+            <span className="text-ink font-semibold">
+              {transactions.length > 0 ? (page - 1) * limit + 1 : 0}
+            </span>{' '}
+            to{' '}
+            <span className="text-ink font-semibold">{Math.min(page * limit, total)}</span> of{' '}
+            <span className="text-ink font-semibold">{total.toLocaleString()}</span> records
           </div>
 
-          <div className="flex items-center space-x-2">
+          <div className="flex items-center gap-2">
             <button
+              type="button"
               onClick={() => updateParam('page', Math.max(1, page - 1).toString())}
               disabled={page <= 1 || loading}
-              className="px-2.5 py-1 bg-[#2a2a2a] border border-[#3e3e3e] rounded text-[#eff1f6] disabled:opacity-30 hover:bg-[#333333] flex items-center space-x-1 transition-colors"
+              className="btn-secondary min-h-[34px] py-1 px-3 text-xs font-mono"
             >
               <ChevronLeft className="w-3.5 h-3.5" />
               <span>Prev</span>
             </button>
-            <span className="text-[#ffa116] font-bold">
-              {page} / {totalPages}
+            <span className="px-2 text-accent font-semibold">
+              Page {page} of {totalPages}
             </span>
             <button
+              type="button"
               onClick={() => updateParam('page', Math.min(totalPages, page + 1).toString())}
               disabled={page >= totalPages || loading}
-              className="px-2.5 py-1 bg-[#2a2a2a] border border-[#3e3e3e] rounded text-[#eff1f6] disabled:opacity-30 hover:bg-[#333333] flex items-center space-x-1 transition-colors"
+              className="btn-secondary min-h-[34px] py-1 px-3 text-xs font-mono"
             >
               <span>Next</span>
               <ChevronRight className="w-3.5 h-3.5" />
             </button>
           </div>
         </div>
-      </div>
+      </section>
     </div>
   );
 };

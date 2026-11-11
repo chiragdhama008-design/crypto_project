@@ -1,17 +1,42 @@
 <!doctype html>
-<html lang="en">
+<html lang="en" data-theme="dark" data-type="software" data-motion="full">
   <head>
     <meta charset="UTF-8" />
-    <link rel="icon" type="image/svg+xml" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><rect width='100' height='100' rx='20' fill='%230f172a'/><text x='50%' y='55%' dominant-baseline='central' text-anchor='middle' fill='%232563eb' font-family='sans-serif' font-size='48' font-weight='900'>TX</text></svg>" />
-    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>TRACE-X | Crypto & Financial Forensic Intelligence Platform</title>
-    <meta name="description" content="TRACE-X: End-to-end crypto and financial forensic intelligence platform powered by the Elliptic Bitcoin Transaction Graph, multi-signal anomaly detection, and graph intelligence." />
-    <!-- Google Fonts Inter -->
-    <link rel="preconnect" href="https://fonts.googleapis.com">
-    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800;900&family=JetBrains+Mono:wght@400;500;600;700&display=swap" rel="stylesheet">
+    <link
+      rel="icon"
+      type="image/svg+xml"
+      href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 64 64'><rect width='64' height='64' rx='14' fill='%230c1014'/><path d='M12 12H24L52 52H40L12 12Z' fill='%23b7e4ce'/><path d='M42 12H54L22 52H10L42 12Z' fill='%23b7e4ce' opacity='.65'/></svg>"
+    />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
+    <meta name="theme-color" content="#0c1014" />
+    <meta name="page-type" content="software" />
+    <meta name="site-kind" content="software" />
+    <title>TRACE-X | Blockchain Forensic Intelligence Platform</title>
+    <meta
+      name="description"
+      content="TRACE-X: Blockchain transaction forensics, 2-layer GraphSAGE network propagation intelligence, and composite AML risk triage on the Elliptic Bitcoin graph."
+    />
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link
+      href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500&family=Manrope:wght@400;500;600;700&display=swap"
+      rel="stylesheet"
+    />
+    <script>
+      (function () {
+        try {
+          var saved = localStorage.getItem('tracex-theme');
+          var theme = saved === 'light' || saved === 'dark' ? saved : 'dark';
+          document.documentElement.setAttribute('data-theme', theme);
+          var meta = document.querySelector('meta[name="theme-color"]');
+          if (meta) meta.setAttribute('content', theme === 'light' ? '#f4f7f4' : '#0c1014');
+          var motion = localStorage.getItem('tracex-motion');
+          document.documentElement.dataset.motion = motion || (window.matchMedia('(prefers-reduced-motion: reduce)').matches ? 'reduced' : 'full');
+        } catch (e) {}
+      })();
+    </script>
   </head>
-  <body class="bg-slate-50 text-slate-900 antialiased selection:bg-blue-100 selection:text-blue-900">
+  <body class="antialiased">
     <div id="root"></div>
     <script type="module" src="/src/main.tsx"></script>
   </body>

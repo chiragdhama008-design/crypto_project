@@ -56,16 +56,20 @@ def get_high_risk_queue(
         if t.total_degree > 15:
             reasons.append(f"High network degree connectivity ({t.total_degree} flows)")
 
+        prob_rounded = round(t.prediction_probability, 4) if t.prediction_probability is not None else None
+        total_deg = t.total_degree if t.total_degree is not None else ((t.in_degree or 0) + (t.out_degree or 0))
         items.append({
             "transaction_id": t.transaction_id,
             "time_step": t.time_step,
             "known_label": t.known_label,
             "prediction": t.prediction,
-            "probability": round(t.prediction_probability, 4) if t.prediction_probability is not None else None,
+            "probability": prob_rounded,
+            "prediction_probability": prob_rounded,
             "risk_score": t.risk_score or 0,
             "risk_level": t.risk_level or "LOW",
-            "in_degree": t.in_degree,
-            "out_degree": t.out_degree,
+            "in_degree": t.in_degree or 0,
+            "out_degree": t.out_degree or 0,
+            "total_degree": total_deg,
             "trigger_reasons": reasons
         })
 

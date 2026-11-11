@@ -1,153 +1,138 @@
 import React from 'react';
-import { BookOpen, Shield, Network, Cpu, AlertTriangle, Layers, ArrowRight, Terminal } from 'lucide-react';
+import { Link } from 'react-router-dom';
+import { ArrowUpRight, Cpu, Database, FileCheck2, ShieldAlert, SlidersHorizontal } from 'lucide-react';
+import { PageHeader } from '../components/common/PageHeader';
+
+const PIPELINE = [
+  { title: 'Source data', detail: 'Transaction features and directed fund-flow edges', icon: Database },
+  { title: 'Selected model', detail: 'Tabular classification or two-hop GraphSAGE inference', icon: Cpu },
+  { title: 'Composite risk', detail: 'Model probability, graph exposure and anomaly signals', icon: SlidersHorizontal },
+  { title: 'Analyst review', detail: 'Indexed records, case notes and an integrity digest', icon: FileCheck2 },
+];
 
 export const Methodology: React.FC = () => {
   return (
-    <div className="p-5 space-y-4 max-w-4xl mx-auto font-sans text-[#eff1f6]">
-      {/* Header - LeetCode Style */}
-      <div className="border-b border-[#333333] pb-3 font-mono">
-        <div className="flex items-center space-x-2">
-          <h1 className="text-base font-bold text-[#eff1f6] tracking-tight">System Specification & Methodology</h1>
-          <span className="text-[10px] bg-[#ffa116]/15 text-[#ffa116] border border-[#ffa116]/30 px-2 py-0.5 rounded font-bold">
-            RFC SPEC
-          </span>
-        </div>
-        <p className="text-xs text-[#8c8c8c] mt-0.5">
-          Core architectural philosophy, algorithmic design, and investigative limitations
-        </p>
-      </div>
+    <div className="workspace-page space-y-6">
+      <PageHeader
+        title="Methodology"
+        eyebrow="Research protocol"
+        subtitle="How transaction data becomes an investigative lead."
+        badges={[{ label: 'Research MVP', tone: 'unknown' }]}
+        actions={<Link to="/models" className="btn-secondary">View evaluation<ArrowUpRight className="h-4 w-4" aria-hidden="true" /></Link>}
+      />
 
-      {/* Principle Quote */}
-      <div className="p-3.5 bg-[#262626] border-l-4 border-[#ffa116] rounded-r border-y border-r border-[#333333] font-mono">
-        <div className="font-bold text-[#ffa116] text-sm">
-          "Don't search for the crime. Let the network reveal it."
-        </div>
-        <p className="text-[#d1d5db] text-xs mt-1 font-sans">
-          TRACE-X replaces traditional single-address keyword searches with end-to-end network flow topology,
-          machine-learned behavioral anomaly detection, and multi-hop taint exposure analytics.
-        </p>
-      </div>
+      <section className="panel-surface space-y-6 p-5 sm:p-6" aria-labelledby="pipeline-heading">
+        <div><h2 id="pipeline-heading" className="section-heading">From source to evidence</h2><p className="mt-1 text-sm text-ink-muted">The processing path, not a live system status</p></div>
+        <ol className="grid gap-x-8 gap-y-6 sm:grid-cols-2 xl:grid-cols-4">
+          {PIPELINE.map(({ title, detail, icon: Icon }, index) => (
+            <li key={title} className="relative flex items-start gap-3">
+              <Icon className="mt-0.5 h-4 w-4 shrink-0 text-accent" aria-hidden="true" />
+              <div><h3 className="text-sm font-medium text-ink">{title}</h3><p className="mt-2 text-sm leading-relaxed text-ink-muted">{detail}</p></div>
+              {index < PIPELINE.length - 1 && <svg viewBox="0 0 28 16" className="absolute -right-6 top-0.5 hidden h-4 w-6 xl:block" aria-hidden="true"><path d="M2 8H24M18 3L24 8L18 13" fill="none" stroke="var(--ink-muted)" strokeWidth="1.2" strokeLinecap="round" strokeLinejoin="round" /></svg>}
+            </li>
+          ))}
+        </ol>
+      </section>
 
-      {/* Sections */}
-      <div className="space-y-3 font-mono">
-        <section className="bg-[#262626] p-3.5 rounded border border-[#333333] shadow-xs space-y-1.5">
-          <h2 className="text-xs font-bold uppercase tracking-wider text-[#eff1f6] flex items-center space-x-2">
-            <span className="w-4 h-4 rounded bg-[#1f1f1f] text-[#ffa116] border border-[#3e3e3e] flex items-center justify-center text-[10px]">1</span>
-            <span>Data Collection & Pluggable Ingestion</span>
-          </h2>
-          <p className="text-[#8c8c8c] text-xs leading-relaxed font-sans">
-            The system is built on a pluggable data source abstraction (<code className="font-mono text-[#ffa116] bg-[#1a1a1a] px-1 py-0.5 rounded">BaseCryptoDataSource</code>).
-            For the current production MVP, the engine operates on the Elliptic Bitcoin Transaction Graph (203,769 transactions, 234,355 directed edges,
-            and 165 standardized features partitioned across 49 discrete bi-weekly time steps).
-            The architecture is designed to integrate Ethereum, Sanctions lists, and exchange APIs without re-architecting data pipelines.
-          </p>
-        </section>
-
-        <section className="bg-[#262626] p-3.5 rounded border border-[#333333] shadow-xs space-y-1.5">
-          <h2 className="text-xs font-bold uppercase tracking-wider text-[#eff1f6] flex items-center space-x-2">
-            <span className="w-4 h-4 rounded bg-[#1f1f1f] text-[#ffa116] border border-[#3e3e3e] flex items-center justify-center text-[10px]">2</span>
-            <span>Graph Construction & Money Tree Topology</span>
-          </h2>
-          <p className="text-[#8c8c8c] text-xs leading-relaxed font-sans">
-            Transactions represent directed graph nodes where edges designate fund flows from inputs to outputs.
-            1-hop and 2-hop subgraphs are indexed using high-speed B-tree indices on both source and destination transaction identifiers,
-            allowing bounded sub-5ms graph traversals with safety bounding (100–150 nodes) to maintain smooth browser visualization.
-          </p>
-        </section>
-
-        <section className="bg-[#262626] p-3.5 rounded border border-[#333333] shadow-xs space-y-1.5">
-          <h2 className="text-xs font-bold uppercase tracking-wider text-[#eff1f6] flex items-center space-x-2">
-            <span className="w-4 h-4 rounded bg-[#1f1f1f] text-[#ffa116] border border-[#3e3e3e] flex items-center justify-center text-[10px]">3</span>
-            <span>Feature Normalization & Dimensioning</span>
-          </h2>
-          <p className="text-[#8c8c8c] text-xs leading-relaxed font-sans">
-            Each transaction contains 165 normalized features:
-            <br />
-            * <strong className="text-[#eff1f6]">Local Features (1 - 93):</strong> Direct transaction properties including fee rates, volume, input/output counts, and script structures.
-            <br />
-            * <strong className="text-[#eff1f6]">Neighborhood Aggregate Features (94 - 165):</strong> 1-hop aggregated metrics (mean, std, min, max) capturing behavioral patterns of immediate counterparties.
-          </p>
-        </section>
-
-        <section className="bg-[#262626] p-3.5 rounded border border-[#333333] shadow-xs space-y-1.5">
-          <h2 className="text-xs font-bold uppercase tracking-wider text-[#eff1f6] flex items-center space-x-2">
-            <span className="w-4 h-4 rounded bg-[#1f1f1f] text-[#ffa116] border border-[#3e3e3e] flex items-center justify-center text-[10px]">4</span>
-            <span>Graph Neural Networks (GNN) & GraphSAGE Message Passing</span>
-          </h2>
-          <p className="text-[#8c8c8c] text-xs leading-relaxed font-sans">
-            Conventional machine learning classifiers (Logistic Regression, Random Forest, Gradient Boosting) evaluate each transaction solely based on its individual tabular feature vector, ignoring the relational structure of the payment graph. In contrast, TRACE-X deploys a <strong className="text-[#eff1f6]">2-Layer GraphSAGE (Sample and Aggregate) Graph Neural Network</strong> that directly learns from both node properties and topological connectivity.
-          </p>
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-2 mt-2 pt-1 font-mono text-[11px]">
-            <div className="p-2.5 bg-[#1e1e1e] rounded border border-[#333333] space-y-1">
-              <span className="text-[#ffa116] font-bold">How GraphSAGE Operates:</span>
-              <p className="text-[#8c8c8c] font-sans">
-                Each node aggregates normalized feature embeddings from its 1-hop and 2-hop transaction neighbors via message passing:
-                <code className="text-[#eff1f6] block bg-[#161616] p-1 rounded my-1 font-mono text-[10px]">h_v^(k) = σ(W · Concat(h_v^(k-1), AGG({'{h_u^(k-1) : u ∈ N(v)}'})))</code>
-                This enables the network to detect laundering signatures such as peeling chains, multi-hop layering, and mule consolidation clusters even when individual feature values appear benign.
-              </p>
+      <div className="divide-y divide-line">
+        <section id="protocol-data" className="grid gap-5 py-7 lg:grid-cols-[220px_minmax(0,1fr)] lg:gap-10" aria-labelledby="data-heading">
+          <div className="space-y-2"><p className="text-xs text-ink-muted tabular-nums">01</p><h2 id="data-heading" className="section-heading">Data & labels</h2><p className="text-sm text-ink-muted">Preserve the dataset meaning.</p></div>
+          <div className="space-y-5">
+            <p className="max-w-3xl text-sm leading-relaxed text-ink">Elliptic represents Bitcoin transactions as nodes and fund transfers as directed edges. The reference corpus contains 203,769 transactions and 234,355 edges across 49 timesteps.</p>
+            <dl className="grid gap-4 sm:grid-cols-3">
+              <div className="space-y-2"><dt className="field-label">Source class 1</dt><dd className="text-sm font-medium text-ink">Illicit</dd><dd className="font-mono text-xs text-ink-muted">ILLICIT / 1</dd></div>
+              <div className="space-y-2"><dt className="field-label">Source class 2</dt><dd className="text-sm font-medium text-ink">Licit</dd><dd className="font-mono text-xs text-ink-muted">LICIT / 0</dd></div>
+              <div className="space-y-2"><dt className="field-label">Unknown, 3 or null</dt><dd className="text-sm font-medium text-ink">Unlabeled</dd><dd className="font-mono text-xs text-ink-muted">UNKNOWN / -1</dd></div>
+            </dl>
+            <div className="grid gap-4 border-t border-line pt-4 sm:grid-cols-2">
+              <div><p className="text-sm font-medium text-ink">93 local features</p><p className="mt-1 text-xs text-ink-muted">Transaction properties / <span className="font-mono">indices 0-92</span></p></div>
+              <div><p className="text-sm font-medium text-ink">72 aggregate features</p><p className="mt-1 text-xs text-ink-muted">One-hop neighborhood summaries / <span className="font-mono">indices 93-164</span></p></div>
             </div>
-            <div className="p-2.5 bg-[#1e1e1e] rounded border border-[#333333] space-y-1">
-              <span className="text-[#00b8a3] font-bold">Bidirectional Money Flow Semantics:</span>
-              <p className="text-[#8c8c8c] font-sans">
-                While Bitcoin transactions are directed from inputs to outputs, criminal forensics requires understanding both <strong className="text-[#eff1f6]">upstream provenance</strong> (where funds originated) and <strong className="text-[#eff1f6]">downstream dispersion</strong> (where funds consolidated). The GNN message-passing layer incorporates bidirectional flow context so node representations synthesize holistic network neighborhood dynamics.
-              </p>
-            </div>
+            <p className="data-note">Unknown nodes remain in graph structure. They are never relabeled as licit and never enter supervised loss or evaluation metrics.</p>
           </div>
         </section>
 
-        <section className="bg-[#262626] p-3.5 rounded border border-[#333333] shadow-xs space-y-1.5">
-          <h2 className="text-xs font-bold uppercase tracking-wider text-[#eff1f6] flex items-center space-x-2">
-            <span className="w-4 h-4 rounded bg-[#1f1f1f] text-[#ffa116] border border-[#3e3e3e] flex items-center justify-center text-[10px]">5</span>
-            <span>Temporal Chronological Validation & Leakage Prevention</span>
-          </h2>
-          <p className="text-[#8c8c8c] text-xs leading-relaxed font-sans">
-            Random k-fold cross-validation introduces severe temporal data leakage in cryptocurrency graphs by training on future transactions to predict past events. TRACE-X strictly enforces a chronological evaluation protocol:
-            <br />
-            * <strong className="text-[#eff1f6]">Training Set:</strong> Timesteps 1–34 (29,894 labeled transactions; 3,462 illicit, 26,432 licit).
-            <br />
-            * <strong className="text-[#eff1f6]">Validation Set:</strong> Timesteps 35–39 (5,486 labeled transactions) used exclusively for early stopping and hyperparameter tuning.
-            <br />
-            * <strong className="text-[#eff1f6]">Future Test Set:</strong> Timesteps 40–49 (11,184 labeled transactions; 636 illicit, 10,548 licit) evaluated strictly once on unseen future activity.
-            <br />
-            * <strong className="text-[#eff1f6]">Graph Isolation Guarantee:</strong> In the Elliptic dataset, all 234,355 directed edges connect transactions confirmed within the exact same 3-hour timestep. Consequently, zero graph edges cross temporal splits, guaranteeing zero structural leakage between training and testing partitions.
-          </p>
+        <section id="protocol-inference" className="grid gap-5 py-7 lg:grid-cols-[220px_minmax(0,1fr)] lg:gap-10" aria-labelledby="inference-heading">
+          <div className="space-y-2"><p className="text-xs text-ink-muted tabular-nums">02</p><h2 id="inference-heading" className="section-heading">Model inference</h2><p className="text-sm text-ink-muted">One selected model, a defined context.</p></div>
+          <div className="grid min-w-0 gap-6 md:grid-cols-2">
+            <div className="space-y-5">
+              <p className="text-sm leading-relaxed text-ink">GraphSAGE uses two aggregation layers on deduplicated, undirected edges. Serving extracts a bounded two-hop neighborhood and preserves the queried transaction's position.</p>
+              <dl className="divide-y divide-line text-sm">
+                <div className="flex justify-between gap-3 py-2.5"><dt className="text-ink">GraphSAGE</dt><dd className="text-right text-ink-muted">Graph + 165 features</dd></div>
+                <div className="flex justify-between gap-3 py-2.5"><dt className="text-ink">Gradient boosting</dt><dd className="text-right text-ink-muted">Boosted trees</dd></div>
+                <div className="flex justify-between gap-3 py-2.5"><dt className="text-ink">Random forest</dt><dd className="text-right text-ink-muted">Bagged trees</dd></div>
+                <div className="flex justify-between gap-3 py-2.5"><dt className="text-ink">Logistic regression</dt><dd className="text-right text-ink-muted">Linear baseline</dd></div>
+              </dl>
+              <p className="data-note">Tabular models consume all 165 features, including neighborhood aggregates. Risk scoring does not blend all four classifiers.</p>
+            </div>
+            <div className="min-w-0 space-y-3">
+              <svg viewBox="0 0 360 230" className="mx-auto h-auto w-full max-w-sm" role="img" aria-labelledby="receptive-field-title receptive-field-description">
+                <title id="receptive-field-title">Two-hop GraphSAGE receptive field</title>
+                <desc id="receptive-field-description">A queried center transaction connects to three first-hop neighbors, each connected to second-hop neighbors. Edges are undirected for message passing. This is a methodology schematic, not an indexed transaction graph.</desc>
+                <g fill="none" stroke="var(--border-strong)" strokeWidth="1.5" strokeLinecap="round">
+                  <path className="diagram-path" d="M180 108L108 65M180 108L252 70M180 108L180 165" stroke="var(--accent-primary)" />
+                  <path className="diagram-path" d="M108 65L35 60M108 65L85 15M108 65L60 140M252 70L312 30M252 70L335 125M180 165L130 210M180 165L260 205" />
+                </g>
+                <g fill="var(--bg-inset)" stroke="var(--ink-muted)" strokeWidth="1.5">
+                  <circle cx="35" cy="60" r="5" /><circle cx="85" cy="15" r="5" /><circle cx="60" cy="140" r="5" /><circle cx="312" cy="30" r="5" /><circle cx="335" cy="125" r="5" /><circle cx="130" cy="210" r="5" /><circle cx="260" cy="205" r="5" />
+                </g>
+                <g fill="var(--bg-surface)" stroke="var(--accent-primary)" strokeWidth="1.5"><circle cx="108" cy="65" r="8" /><circle cx="252" cy="70" r="8" /><circle cx="180" cy="165" r="8" /></g>
+                <circle cx="180" cy="108" r="21" fill="var(--accent-soft)" />
+                <circle cx="180" cy="108" r="11" fill="var(--accent-primary)" />
+              </svg>
+              <div className="chart-legend flex flex-wrap justify-center gap-4 text-xs text-ink-muted"><span className="inline-flex items-center gap-2"><span className="h-2 w-2 rounded-full bg-accent" />Center</span><span className="inline-flex items-center gap-2"><span className="h-2 w-2 rounded-full border border-accent" />1 hop</span><span className="inline-flex items-center gap-2"><span className="h-1.5 w-1.5 rounded-full border border-ink-muted" />2 hops</span></div>
+              <p className="text-center text-xs text-ink-muted">Receptive-field schematic, not a transaction subgraph</p>
+            </div>
+            <p className="data-note md:col-span-2">Inference rejects non-finite or incorrectly sized vectors. Missing model artifacts stop the request rather than produce substitute predictions.</p>
+          </div>
         </section>
 
-        <section className="bg-[#262626] p-3.5 rounded border border-[#333333] shadow-xs space-y-1.5">
-          <h2 className="text-xs font-bold uppercase tracking-wider text-[#eff1f6] flex items-center space-x-2">
-            <span className="w-4 h-4 rounded bg-[#1f1f1f] text-[#ffa116] border border-[#3e3e3e] flex items-center justify-center text-[10px]">6</span>
-            <span>Handling Unlabeled Transactions & Class Imbalance</span>
-          </h2>
-          <p className="text-[#8c8c8c] text-xs leading-relaxed font-sans">
-            Over 77% of Elliptic transactions (157,205 nodes) have unknown labels. In TRACE-X, unknown transactions are preserved in the graph topology to provide structural context during GNN message passing, but are strictly excluded from supervised loss calculation and evaluation metrics.
-            To overcome extreme class imbalance (illicit transactions represent only ~5.7% of the test set), models are optimized with class-weighted CrossEntropy and evaluated primarily on <strong className="text-[#eff1f6]">Illicit Precision, Illicit Recall, Illicit F1, and PR-AUC</strong> rather than overall accuracy.
-          </p>
+        <section id="protocol-evaluation" className="grid gap-5 py-7 lg:grid-cols-[220px_minmax(0,1fr)] lg:gap-10" aria-labelledby="evaluation-heading">
+          <div className="space-y-2"><p className="text-xs text-ink-muted tabular-nums">03</p><h2 id="evaluation-heading" className="section-heading">Chronological evaluation</h2><p className="text-sm text-ink-muted">Earlier data trains. Later data tests.</p></div>
+          <div className="space-y-5">
+            <p className="text-sm leading-relaxed text-ink">Training, validation and testing occupy separate time windows. Random cross-timestep shuffling is not used because it leaks future patterns into training.</p>
+            <div className="progress-track grid h-8 grid-cols-[34fr_5fr_10fr] gap-1 overflow-hidden rounded-lg" role="img" aria-label="Chronological split: 34 training timesteps, 5 validation timesteps, 10 held-out test timesteps"><div className="bg-ink-muted opacity-30" /><div className="bg-ink-muted opacity-60" /><div className="bg-accent" /></div>
+            <dl className="grid gap-5 sm:grid-cols-3">
+              <div className="space-y-2"><dt className="field-label">Training timesteps</dt><dd className="text-xl font-medium text-ink tabular-nums">1-34</dd><dd className="text-sm text-ink-muted tabular-nums">29,894 labeled nodes</dd></div>
+              <div className="space-y-2"><dt className="field-label">Validation timesteps</dt><dd className="text-xl font-medium text-ink tabular-nums">35-39</dd><dd className="text-sm text-ink-muted tabular-nums">5,486 labeled nodes</dd></div>
+              <div className="space-y-2"><dt className="field-label">Held-out test timesteps</dt><dd className="text-xl font-medium text-accent tabular-nums">40-49</dd><dd className="text-sm text-ink-muted tabular-nums">11,184 labeled nodes</dd></div>
+            </dl>
+            <p className="data-note">Reference test split: 636 illicit and 10,548 licit nodes. Illicit-class precision, recall and F1 are reported separately from macro averages. Historical evaluations do not prove runtime readiness.</p>
+          </div>
         </section>
 
-        <section className="bg-[#262626] p-3.5 rounded border border-[#333333] shadow-xs space-y-1.5">
-          <h2 className="text-xs font-bold uppercase tracking-wider text-[#eff1f6] flex items-center space-x-2">
-            <span className="w-4 h-4 rounded bg-[#1f1f1f] text-[#ffa116] border border-[#3e3e3e] flex items-center justify-center text-[10px]">7</span>
-            <span>Deterministic Multi-Signal Composite Risk Scoring</span>
-          </h2>
-          <p className="text-[#8c8c8c] text-xs leading-relaxed font-sans">
-            Risk scores (0 - 100) are generated deterministically through a multi-factor composite formula:
-            ML / GNN Probability Signal (55%), Graph Neighborhood Illicit Exposure (25%), Structural Degree Topology (10%), and Feature Outlier Deviations (10%).
-            Scores map to 4 operational tiers: <span className="text-[#00b8a3] font-bold">LOW (0-30)</span>, <span className="text-[#ffc01e] font-bold">MEDIUM (31-60)</span>, <span className="text-[#ffa116] font-bold">HIGH (61-80)</span>, and <span className="text-[#ef4743] font-bold">CRITICAL (81-100)</span>.
-            Confirmed illicit entities automatically enforce a minimum floor score of 90.
-          </p>
+        <section id="protocol-risk" className="grid gap-5 py-7 lg:grid-cols-[220px_minmax(0,1fr)] lg:gap-10" aria-labelledby="risk-heading">
+          <div className="space-y-2"><p className="text-xs text-ink-muted tabular-nums">04</p><h2 id="risk-heading" className="section-heading">Composite risk</h2><p className="text-sm text-ink-muted">A consistent score from 0 to 100.</p></div>
+          <div className="space-y-5">
+            <p className="text-sm leading-relaxed text-ink">One deterministic engine combines four bounded signals. Each weight below is a maximum contribution, not a probability of wrongdoing.</p>
+            <div className="progress-track flex h-2.5 overflow-hidden rounded-full bg-inset" role="img" aria-label="Maximum risk contributions: 55 points model probability, 25 graph exposure, 10 topology, 10 feature anomalies"><div className="h-full bg-accent" style={{ width: '55%' }} /><div className="h-full bg-signal-high" style={{ width: '25%' }} /><div className="h-full bg-ink-muted" style={{ width: '10%' }} /><div className="h-full bg-ink-muted opacity-40" style={{ width: '10%' }} /></div>
+            <dl className="grid grid-cols-2 gap-5 sm:grid-cols-4">
+              <div className="space-y-2"><dt className="field-label">ML probability</dt><dd className="text-xl font-medium text-ink tabular-nums">55 <span className="text-xs font-normal text-ink-muted">points</span></dd></div>
+              <div className="space-y-2"><dt className="field-label">Graph exposure</dt><dd className="text-xl font-medium text-ink tabular-nums">25 <span className="text-xs font-normal text-ink-muted">points</span></dd></div>
+              <div className="space-y-2"><dt className="field-label">Topology</dt><dd className="text-xl font-medium text-ink tabular-nums">10 <span className="text-xs font-normal text-ink-muted">points</span></dd></div>
+              <div className="space-y-2"><dt className="field-label">Feature anomalies</dt><dd className="text-xl font-medium text-ink tabular-nums">10 <span className="text-xs font-normal text-ink-muted">points</span></dd></div>
+            </dl>
+            <p className="text-sm leading-relaxed text-ink-muted">Known illicit labels set a floor of 90. Known licit labels are capped at 25 only when there are no known illicit neighbors and ML probability is below 0.2.</p>
+            <dl className="grid grid-cols-2 gap-4 border-t border-line pt-4 sm:grid-cols-4">
+              <div><dt className="text-sm text-ink-muted">Low</dt><dd className="mt-1 text-sm text-ink tabular-nums">0-30</dd></div>
+              <div><dt className="text-sm text-ink-muted">Medium</dt><dd className="mt-1 text-sm text-ink tabular-nums">31-60</dd></div>
+              <div><dt className="text-sm text-signal-high">High</dt><dd className="mt-1 text-sm text-ink tabular-nums">61-80</dd></div>
+              <div><dt className="text-sm text-signal-illicit">Critical</dt><dd className="mt-1 text-sm text-ink tabular-nums">81-100</dd></div>
+            </dl>
+          </div>
         </section>
 
-        <section className="bg-[#262626] p-3.5 rounded border border-[#333333] shadow-xs space-y-1.5">
-          <h2 className="text-xs font-bold uppercase tracking-wider text-[#eff1f6] flex items-center space-x-2">
-            <span className="w-4 h-4 rounded bg-[#1f1f1f] text-[#ffa116] border border-[#3e3e3e] flex items-center justify-center text-[10px]">8</span>
-            <span>Forensic Limitations & Operational Safeguards</span>
-          </h2>
-          <p className="text-[#8c8c8c] text-xs leading-relaxed font-sans">
-            Model predictions and risk scores are decision-support intelligence for certified investigators, not autonomous judicial determinations. Key limitations include:
-            (1) Off-chain transactions and Lightning Network hops remain invisible to on-chain graphs;
-            (2) CoinJoin mixers and obfuscation tools can distort neighborhood degree signals;
-            (3) Predictions reflect statistical pattern recognition on confirmed historical datasets and should always be verified against counterparty subpoena records and blockchain explorer proofs.
-          </p>
+        <section id="protocol-evidence" className="grid gap-5 py-7 lg:grid-cols-[220px_minmax(0,1fr)] lg:gap-10" aria-labelledby="evidence-heading">
+          <div className="space-y-2"><p className="text-xs text-ink-muted tabular-nums">05</p><h2 id="evidence-heading" className="section-heading">Evidence & limits</h2><p className="text-sm text-ink-muted">Human review remains necessary.</p></div>
+          <div className="space-y-5">
+            <div className="panel-inset flex items-start gap-3 p-4 sm:p-5"><ShieldAlert className="mt-0.5 h-5 w-5 shrink-0 text-ink-muted" aria-hidden="true" /><p className="text-sm leading-relaxed text-ink">All predictions and composite scores are probabilistic investigative leads, not autonomous legal conclusions. Corroborate findings with independent evidence.</p></div>
+            <ul className="space-y-3 text-sm leading-relaxed text-ink-muted">
+              <li>Bounded subgraphs may omit connections. Degree and exposure alone do not identify laundering, and CoinJoin can confound topology-based signals.</li>
+              <li>Lightning channels and internal exchange books fall outside this on-chain transaction dataset.</li>
+              <li>Dossiers include a canonical SHA-256 digest. It checks content integrity, not factual truth, signed custody or legal admissibility.</li>
+            </ul>
+            <div className="flex flex-wrap gap-x-6 gap-y-2"><Link to="/dataset" className="text-link inline-flex min-h-11 items-center gap-2 text-sm">View source status<ArrowUpRight className="h-4 w-4" aria-hidden="true" /></Link><Link to="/models" className="text-link inline-flex min-h-11 items-center gap-2 text-sm">View model results<ArrowUpRight className="h-4 w-4" aria-hidden="true" /></Link></div>
+          </div>
         </section>
       </div>
     </div>

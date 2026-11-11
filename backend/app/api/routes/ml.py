@@ -2,13 +2,15 @@
 ML Training and Inference API routes.
 """
 
-from typing import List, Optional, Any
+import math
+from typing import List, Optional
 from fastapi import APIRouter, BackgroundTasks, HTTPException, Depends
 from pydantic import BaseModel
 from sqlalchemy.orm import Session
 from backend.app.database import get_db
 from backend.app.config import settings
-from backend.app.ml.predict import predict_transaction
+from backend.app.ml.predict import predict_transaction, normalize_model_name, SUPPORTED_TABULAR_MODELS, GNN_ALIASES
+from backend.app.security import verify_admin_key
 
 router = APIRouter(prefix="/ml", tags=["Machine Learning"])
 
@@ -32,20 +34,38 @@ def predict_endpoint(req: PredictRequest, db: Session = Depends(get_db)):
             status_code=400,
             detail=f"Expected 165 normalized feature values, received {len(req.features)}."
         )
+    if not all(math.isfinite(v) for v in req.features):
+        raise HTTPException(
+            status_code=400,
+            detail="Feature vector must contain finite numeric values only (NaN/Inf rejected)."
+        )
 
-    model_name = req.model_name or "gradient_boosting"
-    pred, prob = predict_transaction(
-        features=req.features,
-        model_name=model_name,
-        transaction_id=req.transaction_id,
-        db_session=db
-    )
+    raw_model = req.model_name or "gradient_boosting"
+    canonical_model = normalize_model_name(raw_model)
+    if canonical_model not in SUPPORTED_TABULAR_MODELS and canonical_model not in GNN_ALIASES:
+        raise HTTPException(
+            status_code=400,
+            detail=f"Unsupported model_name '{raw_model}'. Choose from gradient_boosting, random_forest, logistic_regression, or gnn."
+        )
+
+    try:
+        pred, prob = predict_transaction(
+            features=req.features,
+            model_name=canonical_model,
+            transaction_id=req.transaction_id,
+            db_session=db
+        )
+    except (FileNotFoundError, ImportError) as exc:
+        raise HTTPException(status_code=503, detail=str(exc))
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc))
+
     licit_prob = round(1.0 - prob, 4)
     illicit_prob = round(prob, 4)
 
     return {
-        "model_name": model_name,
-        "selected_model": model_name,
+        "model_name": canonical_model,
+        "selected_model": raw_model,
         "prediction": pred,
         "illicit_probability": illicit_prob,
         "licit_probability": licit_prob,
@@ -54,7 +74,7 @@ def predict_endpoint(req: PredictRequest, db: Session = Depends(get_db)):
     }
 
 
-@router.post("/train")
+@router.post("/train", dependencies=[Depends(verify_admin_key)])
 def train_endpoint(req: TrainRequest, background_tasks: BackgroundTasks):
     from scripts.train_model import run_training
     models_to_train = req.models or ["logistic_regression", "random_forest", "gradient_boosting", "gnn"]

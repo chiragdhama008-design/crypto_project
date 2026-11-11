@@ -1,0 +1,25 @@
+---
+description: Cybersecurity, safe ML deserialization, CORS, opt-in admin key gate, path safety, and SQL/Supabase guardrails
+globs: backend/**,scripts/**,sql/**,render.yaml,.env*
+alwaysApply: false
+---
+
+# TRACE-X Backend, ML & Database Security Guardrails
+
+Follow [`SECURITY.md`](../../SECURITY.md) and [`SECURITY_AUDIT.md`](../../SECURITY_AUDIT.md) on every backend, pipeline, schema, or deployment change:
+
+1. **Opt-In Admin Gate & Auth Boundary (`backend/app/security.py`, `api/routes/`):**
+   - Preserve `Depends(verify_admin_key)` (`X-Admin-Key` vs `ADMIN_API_KEY`, no-op when empty in local dev) on `POST /api/ml/train` and `POST /api/dataset/ingest`.
+   - Do **not** gate `/api/cases*` or read routes behind mandatory login screens in Hackathon MVP mode (full JWT/RBAC is tracked under Post-Hackathon Hardening in `SECURITY_AUDIT.md`). Keep `CaseUpdateRequest.status` `Literal` validation and missing-case `404` checks intact.
+2. **Safe Model Deserialization (`backend/app/ml/`, `scripts/`):**
+   - Preserve `torch.load(..., weights_only=True)` in `gnn_predict.py`; never load untrusted checkpoints with `weights_only=False` or raw `pickle`. Treat `models/` as trusted artifacts in MVP mode (pre-production `skops`/SHA-256 verification documented in `SECURITY_AUDIT.md`).
+3. **CORS & Transport Security (`backend/app/main.py`, `render.yaml`):**
+   - Never combine wildcard/regex origins (`*`, `https?://.*`) with `allow_credentials=True`; preserve `_wildcard_cors` credential suppression and security response headers (`nosniff`, `DENY`, `strict-origin-when-cross-origin`).
+4. **Path Traversal & Error Hygiene (`main.py`, `dataset.py`, `config.py`):**
+   - Keep `serve_spa()` validated via `Path.resolve().is_relative_to(...)`.
+   - Keep `DEBUG=False` default, omit raw `str(exc)` from HTTP `500` responses outside `DEBUG=True`, and keep `/api/dataset/status` exposing only `dataset_configured` / `dataset_directory_name`.
+5. **SQLAlchemy & Supabase (`sql/schema.sql`, `database.py`, `transactions.py`):**
+   - Always use parameterized SQLAlchemy queries and `sqlalchemy.String` in `.cast(String)` (never `.cast(str)`). Keep `uq_edge` / `uq_case_tx` unique constraints in SQLite fallback and lazy-import `supabase`.
+   - Enable Supabase `ROW LEVEL SECURITY` in `sql/schema.sql` before public PostgREST deployment.
+6. **GNN, Reports & Evaluation Integrity (`gnn_predict.py`, `train.py`, `reports/generator.py`):**
+   - Preserve 2-hop undirected subgraph inference (`graph_subgraph_2hop`), deterministic `.order_by(TransactionEdge.id.asc())` in `traversal.py`, HistGB permutation importances in `train.py`, and canonical `integrity_sha256` digests on case dossiers.

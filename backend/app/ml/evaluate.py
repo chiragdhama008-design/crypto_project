@@ -3,8 +3,16 @@ Model evaluation module focusing on class imbalance and illicit activity detecti
 Tracks Illicit Precision, Illicit Recall, Illicit F1, PR-AUC, and ROC-AUC.
 """
 
-from typing import Dict, Any, List
+from typing import Dict, Any, List, Optional
+import math
 import numpy as np
+
+
+def _clean_float(val: float, digits: int = 4) -> Optional[float]:
+    f = float(val)
+    if math.isnan(f) or math.isinf(f):
+        return None
+    return round(f, digits)
 from sklearn.metrics import (
     precision_score,
     recall_score,
@@ -55,18 +63,18 @@ def evaluate_model_performance(
     cm = confusion_matrix(y_true, y_pred)
     tn, fp, fn, tp = int(cm[0, 0]), int(cm[0, 1]), int(cm[1, 0]), int(cm[1, 1])
 
-    # Downsample ROC and PR curves to ~40 points for crisp, non-bloated JSON payloads
+    # Downsample ROC and PR curves to ~40 points for crisp, RFC-8259-compliant JSON payloads
     fpr, tpr, roc_thresh = roc_curve(y_true, y_prob)
     step_roc = max(1, len(fpr) // 40)
     roc_points = [
-        {"fpr": round(float(fpr[i]), 4), "tpr": round(float(tpr[i]), 4), "threshold": round(float(roc_thresh[i]), 4)}
+        {"fpr": _clean_float(fpr[i]), "tpr": _clean_float(tpr[i]), "threshold": _clean_float(roc_thresh[i])}
         for i in range(0, len(fpr), step_roc)
     ]
 
     p_curve, r_curve, pr_thresh = precision_recall_curve(y_true, y_prob)
     step_pr = max(1, len(p_curve) // 40)
     pr_points = [
-        {"precision": round(float(p_curve[i]), 4), "recall": round(float(r_curve[i]), 4), "threshold": round(float(pr_thresh[min(i, len(pr_thresh)-1)]), 4)}
+        {"precision": _clean_float(p_curve[i]), "recall": _clean_float(r_curve[i]), "threshold": _clean_float(pr_thresh[min(i, len(pr_thresh)-1)])}
         for i in range(0, len(p_curve), step_pr)
     ]
 

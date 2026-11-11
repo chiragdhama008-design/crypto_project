@@ -9,6 +9,7 @@ from backend.app.config import settings
 from backend.app.database import get_db
 from backend.app.models import IngestionRun, Transaction, TransactionEdge
 from backend.app.data_sources.elliptic.loader import EllipticDataSource
+from backend.app.security import verify_admin_key
 
 router = APIRouter(prefix="/dataset", tags=["Dataset"])
 
@@ -36,7 +37,8 @@ def get_dataset_status(db: Session = Depends(get_db)):
 
     return {
         "dataset_name": "Elliptic Bitcoin Transaction Graph",
-        "dataset_path": str(data_path),
+        "dataset_configured": bool(settings.DATASET_PATH),
+        "dataset_directory_name": data_path.name if settings.DATASET_PATH else "",
         "files_verified": files_present,
         "database_ingestion": {
             "status": last_run.status if last_run else "NOT_INGESTED",
@@ -58,7 +60,7 @@ def get_dataset_status(db: Session = Depends(get_db)):
     }
 
 
-@router.post("/ingest")
+@router.post("/ingest", dependencies=[Depends(verify_admin_key)])
 def trigger_ingest(background_tasks: BackgroundTasks, limit: int = None, edges_limit: int = None):
     from scripts.ingest_dataset import run_ingestion
     background_tasks.add_task(

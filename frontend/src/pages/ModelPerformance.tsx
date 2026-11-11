@@ -1,664 +1,414 @@
 import React, { useEffect, useState } from 'react';
-import {
-  Cpu,
-  TrendingUp,
-  Award,
-  CheckCircle2,
-  AlertTriangle,
-  Layers,
-  BarChart2,
-  Terminal,
-  Network,
-  GitBranch,
-  Timer,
-  ChevronRight,
-  ShieldAlert,
-  FlaskConical,
-  Check,
-  X
-} from 'lucide-react';
-import { LabelBadge } from '../components/common/LabelBadge';
-import { RiskBadge } from '../components/common/RiskBadge';
-import {
-  LineChart,
-  Line,
-  BarChart,
-  Bar,
-  XAxis,
-  YAxis,
-  CartesianGrid,
-  Tooltip,
-  Legend,
-  ResponsiveContainer
-} from 'recharts';
+import { AlertTriangle, Check, ChevronDown, Cpu, FlaskConical, Info, Network, RefreshCw, ShieldAlert } from 'lucide-react';
+import { CartesianGrid, Line, LineChart, ReferenceLine, ResponsiveContainer, Tooltip, XAxis, YAxis } from 'recharts';
 import { api } from '../services/api';
-import { ModelMetrics } from '../types/api';
+import type { KnownLabel, ModelMetrics } from '../types/api';
+import { PageHeader } from '../components/common/PageHeader';
+import { StatTile } from '../components/common/StatTile';
+import { CustomTooltip } from '../components/common/CustomTooltip';
+import { TableRowsSkeleton } from '../components/common/LoadingSkeleton';
+import { EmptyState } from '../components/common/EmptyState';
+import { LabelBadge } from '../components/common/LabelBadge';
+
+const AVAILABLE_MODELS = [
+  { id: 'gradient_boosting', name: 'Gradient boosting', input: '165 features', family: 'Boosted trees' },
+  { id: 'random_forest', name: 'Random forest', input: '165 features', family: 'Bagged trees' },
+  { id: 'logistic_regression', name: 'Logistic regression', input: '165 features', family: 'Linear baseline' },
+  { id: 'gnn', name: 'GraphSAGE', input: 'Graph + 165 features', family: 'Two-layer graph model' },
+] as const;
+
+type ModelId = (typeof AVAILABLE_MODELS)[number]['id'];
+
+interface BenchmarkResponse {
+  model_name: string;
+  transactions: Array<{
+    transaction_id: number;
+    time_step: number;
+    ground_truth: KnownLabel;
+    prediction: KnownLabel;
+    probability: number;
+    scenario: string;
+    match: boolean;
+  }>;
+}
+
+interface ModelRequest<T> {
+  model: ModelId;
+  data: T | null;
+  loading: boolean;
+  error: string | null;
+}
+
+const percent = (value?: number | null) =>
+  typeof value === 'number' && Number.isFinite(value) ? `${(value * 100).toFixed(1)}%` : 'Not recorded';
+
+const score = (value?: number | null) =>
+  typeof value === 'number' && Number.isFinite(value) ? value.toFixed(3) : 'Not recorded';
 
 export const ModelPerformance: React.FC = () => {
-  const [activeModel, setActiveModel] = useState<string>('gnn');
-  const [metrics, setMetrics] = useState<ModelMetrics | null>(null);
-  const [allMetrics, setAllMetrics] = useState<Record<string, ModelMetrics>>({});
-  const [loading, setLoading] = useState(true);
+  const [activeModel, setActiveModel] = useState<ModelId>('gradient_boosting');
+  const [metricRequest, setMetricRequest] = useState<ModelRequest<ModelMetrics>>({
+    model: 'gradient_boosting', data: null, loading: true, error: null,
+  });
+  const [benchmarkRequest, setBenchmarkRequest] = useState<ModelRequest<BenchmarkResponse>>({
+    model: 'gradient_boosting', data: null, loading: true, error: null,
+  });
+  const [allMetrics, setAllMetrics] = useState<Partial<Record<ModelId, ModelMetrics>>>({});
   const [comparisonLoading, setComparisonLoading] = useState(true);
-  const [error, setError] = useState<string | null>(null);
-  const [unseenData, setUnseenData] = useState<any | null>(null);
-  const [unseenLoading, setUnseenLoading] = useState<boolean>(false);
+  const [comparisonError, setComparisonError] = useState<string | null>(null);
+  const [curveType, setCurveType] = useState<'pr' | 'roc'>('pr');
+  const [expandedTransaction, setExpandedTransaction] = useState<number | null>(null);
+  const [showAllBenchmark, setShowAllBenchmark] = useState(false);
+  const [refreshKey, setRefreshKey] = useState(0);
 
-  const availableModels = [
-    { id: 'gnn', name: 'Graph Neural Network (GNN)', badge: 'GraphSAGE', type: 'Graph Learning' },
-    { id: 'gradient_boosting', name: 'Gradient Boosting', badge: 'Active Default', type: 'Ensemble Tree' },
-    { id: 'random_forest', name: 'Random Forest', badge: 'High Precision', type: 'Bagged Trees' },
-    { id: 'logistic_regression', name: 'Logistic Regression', badge: 'Baseline', type: 'Linear Classifier' },
-  ];
-
-  // Fetch active model metrics and unseen benchmark test
   useEffect(() => {
-    setLoading(true);
+    let cancelled = false;
+    setMetricRequest({ model: activeModel, data: null, loading: true, error: null });
+    setBenchmarkRequest({ model: activeModel, data: null, loading: true, error: null });
+    setExpandedTransaction(null);
+    setShowAllBenchmark(false);
+
     api.getModelMetrics(activeModel)
-      .then((res) => {
-        setMetrics(res);
-        setError(null);
+      .then((data) => {
+        if (!cancelled) setMetricRequest({ model: activeModel, data, loading: false, error: null });
       })
-      .catch((err) => setError(err.message))
-      .finally(() => setLoading(false));
-
-    setUnseenLoading(true);
-    api.getUnseenBenchmark(activeModel)
-      .then((res) => setUnseenData(res))
-      .catch((err) => console.warn('Unseen benchmark error:', err))
-      .finally(() => setUnseenLoading(false));
-  }, [activeModel]);
-
-  // Fetch all 4 models for comprehensive cross-model comparison
-  useEffect(() => {
-    setComparisonLoading(true);
-    Promise.allSettled(
-      availableModels.map((m) => api.getModelMetrics(m.id).then((data) => ({ id: m.id, data })))
-    ).then((results) => {
-      const metricsMap: Record<string, ModelMetrics> = {};
-      results.forEach((r) => {
-        if (r.status === 'fulfilled') {
-          metricsMap[r.value.id] = r.value.data;
-        }
+      .catch(() => {
+        if (!cancelled) setMetricRequest({
+          model: activeModel, data: null, loading: false,
+          error: 'Recorded evaluation metrics could not be loaded for this model.',
+        });
       });
-      setAllMetrics(metricsMap);
-    }).finally(() => setComparisonLoading(false));
-  }, []);
 
-  // Format cross-model comparison chart data
-  const comparisonChartData = availableModels
-    .filter((m) => allMetrics[m.id])
-    .map((m) => {
-      const data = allMetrics[m.id];
-      return {
-        name: m.name.replace(' (GNN)', ''),
-        id: m.id,
-        'Illicit F1 (%)': Number((data.illicit_f1 * 100).toFixed(1)),
-        'Illicit Recall (%)': Number((data.illicit_recall * 100).toFixed(1)),
-        'Illicit Precision (%)': Number((data.illicit_precision * 100).toFixed(1)),
-        'PR-AUC': Number(data.pr_auc.toFixed(3)),
-        'ROC-AUC': Number(data.roc_auc.toFixed(3)),
-      };
-    });
+    api.getUnseenBenchmark(activeModel)
+      .then((data: BenchmarkResponse) => {
+        // The benchmark endpoint can silently substitute a model for an unsupported key.
+        if (data.model_name.toLowerCase().replaceAll(' ', '_') !== activeModel) {
+          throw new Error('Benchmark model mismatch');
+        }
+        if (!cancelled) setBenchmarkRequest({ model: activeModel, data, loading: false, error: null });
+      })
+      .catch(() => {
+        if (!cancelled) setBenchmarkRequest({
+          model: activeModel, data: null, loading: false,
+          error: 'The precomputed benchmark for this model could not be loaded.',
+        });
+      });
+
+    return () => { cancelled = true; };
+  }, [activeModel, refreshKey]);
+
+  useEffect(() => {
+    let cancelled = false;
+    setComparisonLoading(true);
+    setComparisonError(null);
+    Promise.allSettled(AVAILABLE_MODELS.map((model) => api.getModelMetrics(model.id)))
+      .then((results) => {
+        if (cancelled) return;
+        const next: Partial<Record<ModelId, ModelMetrics>> = {};
+        const unavailable: string[] = [];
+        results.forEach((result, index) => {
+          if (result.status === 'fulfilled') next[AVAILABLE_MODELS[index].id] = result.value;
+          else unavailable.push(AVAILABLE_MODELS[index].name);
+        });
+        setAllMetrics(next);
+        setComparisonError(unavailable.length ? `Metrics unavailable: ${unavailable.join(', ')}.` : null);
+        setComparisonLoading(false);
+      });
+    return () => { cancelled = true; };
+  }, [refreshKey]);
+
+  // Keyed results also prevent the previous model appearing before the new effect starts.
+  const metrics = metricRequest.model === activeModel ? metricRequest.data : null;
+  const modelLoading = metricRequest.model !== activeModel || metricRequest.loading;
+  const modelError = metricRequest.model === activeModel ? metricRequest.error : null;
+  const benchmark = benchmarkRequest.model === activeModel ? benchmarkRequest.data : null;
+  const benchmarkLoading = benchmarkRequest.model !== activeModel || benchmarkRequest.loading;
+  const benchmarkError = benchmarkRequest.model === activeModel ? benchmarkRequest.error : null;
+  const selectedModel = AVAILABLE_MODELS.find((model) => model.id === activeModel)!;
+  const matrix = metrics?.confusion_matrix;
+  const matrixValues = matrix && [matrix.true_negative, matrix.false_positive, matrix.false_negative, matrix.true_positive];
+  const hasMatrix = !!matrixValues?.every((value) => Number.isFinite(value) && value >= 0);
+  const testCount = hasMatrix ? matrixValues!.reduce((sum, value) => sum + value, 0) : null;
+  const illicitTestShare = testCount && matrix ? ((matrix.true_positive + matrix.false_negative) / testCount) * 100 : null;
+  const curveData: Array<Record<string, number>> = curveType === 'pr'
+    ? (metrics?.pr_curve ?? []).filter((point) => Number.isFinite(point.recall) && Number.isFinite(point.precision))
+        .map((point) => ({ recall: point.recall * 100, precision: point.precision * 100 }))
+    : (metrics?.roc_curve ?? []).filter((point) => Number.isFinite(point.fpr) && Number.isFinite(point.tpr))
+        .map((point) => ({ fpr: point.fpr * 100, tpr: point.tpr * 100 }));
+  const features = (metrics?.feature_importances ?? [])
+    .filter((feature) => Number.isFinite(feature.importance))
+    .sort((a, b) => b.importance - a.importance);
+  const uniformWeights = features.length > 1 && features.every((feature) => Math.abs(feature.importance - features[0].importance) < 1e-9);
+  const maxWeight = features[0]?.importance ?? 0;
+  const benchmarkRows = benchmark?.transactions ?? [];
+  const correctCount = benchmarkRows.filter((transaction) => transaction.prediction === transaction.ground_truth).length;
+  const illicitRows = benchmarkRows.filter((transaction) => transaction.ground_truth === 'ILLICIT');
+  const illicitHits = illicitRows.filter((transaction) => transaction.prediction === 'ILLICIT').length;
+  const visibleBenchmark = showAllBenchmark ? benchmarkRows : benchmarkRows.slice(0, 6);
 
   return (
-    <div className="p-4 space-y-4 max-w-7xl mx-auto font-sans text-[#eff1f6]">
-      {/* Header - LeetCode Style */}
-      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 border-b border-[#333333] pb-3 font-mono">
-        <div>
-          <div className="flex items-center space-x-2">
-            <h1 className="text-base font-bold text-[#eff1f6] tracking-tight">
-              ML & Graph Neural Network Benchmark & Evaluation
-            </h1>
-            <span className="text-[10px] bg-[#ffa116]/15 text-[#ffa116] border border-[#ffa116]/30 px-2 py-0.5 rounded font-bold">
-              TEMPORAL SPLIT
-            </span>
-            <span className="text-[10px] bg-[#00b8a3]/15 text-[#00b8a3] border border-[#00b8a3]/30 px-2 py-0.5 rounded font-bold">
-              4 MODELS
-            </span>
-          </div>
-          <p className="text-xs text-[#8c8c8c] mt-0.5">
-            Strict chronological evaluation on Elliptic Bitcoin Graph (Train: 1–34 | Val: 35–39 | Test: 40–49)
-          </p>
-        </div>
+    <div className="workspace-page space-y-6">
+      <PageHeader
+        title="Model evaluation"
+        eyebrow="Recorded evaluation"
+        subtitle="Compare model results on later, held-out Bitcoin transactions."
+        badges={[{ label: 'Historical metrics', tone: 'unknown' }]}
+        actions={
+          <button type="button" className="btn-secondary" onClick={() => setRefreshKey((key) => key + 1)} disabled={modelLoading || comparisonLoading || benchmarkLoading}>
+            <RefreshCw className="h-4 w-4" aria-hidden="true" />
+            Refresh results
+          </button>
+        }
+      />
 
-        {/* Model Architecture Selector - LeetCode Tabs */}
-        <div className="flex items-center space-x-1 bg-[#1f1f1f] p-1 rounded border border-[#333333] overflow-x-auto">
-          {availableModels.map((m) => (
-            <button
-              key={m.id}
-              onClick={() => setActiveModel(m.id)}
-              className={`px-3 py-1 text-xs rounded font-medium transition-all whitespace-nowrap flex items-center space-x-1.5 ${
-                activeModel === m.id
-                  ? 'bg-[#ffa116] text-[#1a1a1a] font-bold shadow-xs'
-                  : 'text-[#8c8c8c] hover:text-[#eff1f6]'
-              }`}
-            >
-              {m.id === 'gnn' && <Network className="w-3 h-3" />}
-              <span>{m.name}</span>
-            </button>
-          ))}
-        </div>
+      <div className="segmented-control grid grid-cols-2 gap-1 xl:grid-cols-4" role="group" aria-label="Model to inspect">
+        {AVAILABLE_MODELS.map((model) => (
+          <button key={model.id} type="button" className="btn-ghost min-h-11 justify-start gap-3 px-4 text-left" aria-pressed={activeModel === model.id} onClick={() => setActiveModel(model.id)}>
+            {model.id === 'gnn' ? <Network className="h-4 w-4 shrink-0" aria-hidden="true" /> : <Cpu className="h-4 w-4 shrink-0" aria-hidden="true" />}
+            <span className="min-w-0">
+              <span className="block text-sm font-medium">{model.name}</span>
+              <span className="hidden text-xs text-ink-muted sm:block">{model.family}</span>
+            </span>
+          </button>
+        ))}
       </div>
 
-      {/* 4-MODEL BENCHMARK COMPARISON MATRIX */}
-      <div className="bg-[#262626] p-3.5 rounded border border-[#333333] space-y-3 font-mono">
-        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 border-b border-[#333333] pb-2">
-          <div className="flex items-center space-x-2">
-            <BarChart2 className="w-4 h-4 text-[#ffa116]" />
-            <h2 className="text-xs font-bold uppercase tracking-wider text-[#eff1f6]">
-              All-Model Comparative Matrix (Test Timesteps 40–49)
-            </h2>
+      {modelLoading ? (
+        <section className="space-y-4" role="status" aria-label="Loading recorded model results">
+          <p className="data-note">Loading {selectedModel.name.toLowerCase()} results...</p>
+          <div className="metrics-grid grid grid-cols-2 gap-3 sm:grid-cols-3 xl:grid-cols-6" aria-hidden="true">
+            {Array.from({ length: 6 }, (_, index) => <div key={index} className="panel-surface h-28 animate-pulse" />)}
           </div>
-          <span className="text-[10px] text-[#8c8c8c]">
-            Evaluated on identical 11,184 unseen future test transactions
-          </span>
-        </div>
+          <div className="panel-surface h-80 animate-pulse" aria-hidden="true" />
+        </section>
+      ) : modelError || !metrics ? (
+        <EmptyState icon={AlertTriangle} tone="error" title="No recorded metrics" description={modelError || 'This model has no evaluation results available.'} actionLabel="Retry results" onAction={() => setRefreshKey((key) => key + 1)} />
+      ) : (
+        <>
+          <section className="space-y-4" aria-labelledby="selected-model-heading">
+            <div className="flex flex-wrap items-end justify-between gap-3">
+              <div>
+                <h2 id="selected-model-heading" className="section-heading">{selectedModel.name}</h2>
+                <p className="mt-1 text-sm text-ink-muted">
+                  {activeModel === 'gnn' ? 'Two-layer GraphSAGE with bounded, two-hop graph context.' : 'Local and neighborhood aggregate features, evaluated together.'}
+                </p>
+              </div>
+              <p className="text-xs text-ink-muted tabular-nums">Test steps 40-49{testCount !== null ? ` / ${testCount.toLocaleString()} known labels` : ''}</p>
+            </div>
+            <div className="metrics-grid grid grid-cols-2 gap-3 sm:grid-cols-3 xl:grid-cols-6">
+              <StatTile label="Illicit precision" value={percent(metrics.illicit_precision)} caption="Illicit among flagged nodes" />
+              <StatTile label="Illicit recall" value={percent(metrics.illicit_recall)} caption="Known illicit nodes found" />
+              <StatTile label="Illicit F1" value={percent(metrics.illicit_f1)} caption="Precision / recall balance" tone="accent" />
+              <StatTile label="PR-AUC" value={score(metrics.pr_auc)} caption="Precision-recall area" />
+              <StatTile label="ROC-AUC" value={score(metrics.roc_auc)} caption="Threshold separation" />
+              <StatTile label="Accuracy" value={percent(metrics.accuracy)} caption="Both known classes" />
+            </div>
+          </section>
 
-        {/* Table */}
-        <div className="overflow-x-auto">
-          <table className="w-full text-left text-xs">
-            <thead>
-              <tr className="border-b border-[#333333] text-[10px] uppercase text-[#8c8c8c]">
-                <th className="pb-2 font-semibold">Model Architecture</th>
-                <th className="pb-2 font-semibold">Input Modality</th>
-                <th className="pb-2 font-semibold text-right">Illicit F1</th>
-                <th className="pb-2 font-semibold text-right">Illicit Recall</th>
-                <th className="pb-2 font-semibold text-right">Illicit Prec.</th>
-                <th className="pb-2 font-semibold text-right">PR-AUC</th>
-                <th className="pb-2 font-semibold text-right">ROC-AUC</th>
-                <th className="pb-2 font-semibold text-right">Accuracy</th>
-                <th className="pb-2 font-semibold text-center">Status</th>
-              </tr>
-            </thead>
-            <tbody className="divide-y divide-[#333333]">
-              {availableModels.map((m) => {
-                const data = allMetrics[m.id];
-                const isSelected = activeModel === m.id;
+          <div className="grid min-w-0 gap-5 xl:grid-cols-[minmax(0,1.55fr)_minmax(0,1fr)]">
+            <section className="panel-surface min-w-0 space-y-5 p-5 sm:p-6" aria-labelledby="curve-heading">
+              <div className="flex flex-wrap items-center justify-between gap-3">
+                <div>
+                  <h2 id="curve-heading" className="section-heading">Detection trade-off</h2>
+                  <p className="mt-1 text-xs text-ink-muted">Recorded threshold curve, not live inference</p>
+                </div>
+                <div className="segmented-control flex" role="group" aria-label="Evaluation curve">
+                  <button type="button" className="btn-ghost" aria-pressed={curveType === 'pr'} onClick={() => setCurveType('pr')}>Precision-recall</button>
+                  <button type="button" className="btn-ghost" aria-pressed={curveType === 'roc'} onClick={() => setCurveType('roc')}>ROC</button>
+                </div>
+              </div>
+              <div className="flex flex-wrap justify-between gap-2 text-xs text-ink-muted tabular-nums">
+                <span>{curveType === 'pr' ? 'Precision (%)' : 'True positive rate (%)'}</span>
+                <span>{curveType === 'pr' ? `PR-AUC ${score(metrics.pr_auc)}` : `ROC-AUC ${score(metrics.roc_auc)}`}</span>
+              </div>
+              {curveData.length ? (
+                <div className="h-64 min-w-0 w-full sm:h-72">
+                  <ResponsiveContainer width="100%" height="100%" minWidth={1}>
+                    <LineChart data={curveData} margin={{ top: 8, right: 18, left: 0, bottom: 8 }} accessibilityLayer>
+                      <CartesianGrid stroke="var(--chart-grid)" strokeDasharray="3 5" vertical={false} />
+                      <XAxis type="number" dataKey={curveType === 'pr' ? 'recall' : 'fpr'} domain={[0, 100]} ticks={[0, 25, 50, 75, 100]} tick={{ fill: 'var(--chart-axis)', fontSize: 11 }} tickLine={false} axisLine={false} />
+                      <YAxis type="number" domain={[0, 100]} ticks={[0, 25, 50, 75, 100]} width={36} tick={{ fill: 'var(--chart-axis)', fontSize: 11 }} tickLine={false} axisLine={false} />
+                      <Tooltip content={<CustomTooltip labelPrefix={curveType === 'pr' ? 'Recall (%) ' : 'False positive rate (%) '} valueSuffix="%" />} />
+                      {curveType === 'roc' ? (
+                        <ReferenceLine segment={[{ x: 0, y: 0 }, { x: 100, y: 100 }]} stroke="var(--signal-unknown)" strokeDasharray="5 5" />
+                      ) : illicitTestShare !== null ? (
+                        <ReferenceLine y={illicitTestShare} stroke="var(--signal-unknown)" strokeDasharray="5 5" />
+                      ) : null}
+                      <Line type="linear" dataKey={curveType === 'pr' ? 'precision' : 'tpr'} name={curveType === 'pr' ? 'Precision' : 'True positive rate'} stroke="var(--accent-primary)" strokeWidth={2.5} dot={false} activeDot={{ r: 4, stroke: 'var(--bg-surface)', strokeWidth: 2 }} isAnimationActive={false} />
+                    </LineChart>
+                  </ResponsiveContainer>
+                </div>
+              ) : <p className="py-20 text-center text-sm text-ink-muted">This curve was not recorded.</p>}
+              <div className="flex flex-wrap items-center justify-between gap-3 text-xs text-ink-muted">
+                <div className="chart-legend flex flex-wrap items-center gap-4">
+                  <span className="inline-flex items-center gap-2"><span className="h-0.5 w-4 bg-accent" />Model curve</span>
+                  {(curveType === 'roc' || illicitTestShare !== null) && <span className="inline-flex items-center gap-2"><span className="w-4 border-t border-dashed border-ink-muted" />No-skill reference</span>}
+                </div>
+                <span>{curveType === 'pr' ? 'Recall (%)' : 'False positive rate (%)'}</span>
+              </div>
+            </section>
+
+            <section className="panel-surface min-w-0 space-y-5 p-5 sm:p-6" aria-labelledby="outcome-heading">
+              <div>
+                <h2 id="outcome-heading" className="section-heading">Test outcomes</h2>
+                <p className="mt-1 text-xs text-ink-muted">Actual labels against recorded predictions</p>
+              </div>
+              {hasMatrix && matrix ? (
+                <>
+                  <table className="w-full border-separate border-spacing-1 text-sm">
+                    <caption className="sr-only">Confusion matrix for {selectedModel.name}, test timesteps 40 through 49</caption>
+                    <thead>
+                      <tr>
+                        <td />
+                        <th scope="col" className="px-2 pb-2 text-center text-xs font-medium text-ink-muted">Predicted<br />licit</th>
+                        <th scope="col" className="px-2 pb-2 text-center text-xs font-medium text-ink-muted">Predicted<br />illicit</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      <tr>
+                        <th scope="row" className="pr-2 text-left text-xs font-medium text-ink-muted">Actual<br />licit</th>
+                        <td className="rounded-lg bg-inset px-2 py-5 text-center"><span className="block text-xl font-medium text-ink tabular-nums">{matrix.true_negative.toLocaleString()}</span><span className="text-xs text-ink-muted">Correct licit</span></td>
+                        <td className="rounded-lg bg-inset px-2 py-5 text-center"><span className="block text-xl font-medium text-signal-high tabular-nums">{matrix.false_positive.toLocaleString()}</span><span className="text-xs text-ink-muted">False alarms</span></td>
+                      </tr>
+                      <tr>
+                        <th scope="row" className="pr-2 text-left text-xs font-medium text-ink-muted">Actual<br />illicit</th>
+                        <td className="rounded-lg bg-inset px-2 py-5 text-center"><span className="block text-xl font-medium text-signal-illicit tabular-nums">{matrix.false_negative.toLocaleString()}</span><span className="text-xs text-ink-muted">Missed illicit</span></td>
+                        <td className="rounded-lg bg-accent-soft px-2 py-5 text-center"><span className="block text-xl font-medium text-accent tabular-nums">{matrix.true_positive.toLocaleString()}</span><span className="text-xs text-ink-muted">Illicit found</span></td>
+                      </tr>
+                    </tbody>
+                  </table>
+                  <div className="flex items-center justify-between border-t border-line pt-4 text-sm">
+                    <span className="text-ink-muted">Known labels evaluated</span>
+                    <span className="font-medium text-ink tabular-nums">{testCount!.toLocaleString()}</span>
+                  </div>
+                </>
+              ) : <p className="py-12 text-sm text-ink-muted">Confusion counts were not recorded.</p>}
+              <p className="data-note">UNKNOWN nodes are excluded from supervised metrics. Illicit F1 is not the macro F1 average.</p>
+            </section>
+          </div>
+        </>
+      )}
+
+      <section className="panel-surface min-w-0 overflow-hidden" aria-labelledby="comparison-heading">
+        <div className="flex flex-wrap items-center justify-between gap-3 p-5 sm:p-6">
+          <div>
+            <h2 id="comparison-heading" className="section-heading">Model comparison</h2>
+            <p className="mt-1 text-sm text-ink-muted">Illicit-class results from the chronological test split</p>
+          </div>
+          <span className="text-xs text-ink-muted">Select a model to inspect its results</span>
+        </div>
+        <div className="overflow-x-auto" tabIndex={0} role="region" aria-label="Historical model comparison table">
+          <table className="tx-table min-w-[760px]">
+            <thead><tr><th scope="col">Model</th><th scope="col" className="text-right">Illicit precision</th><th scope="col" className="text-right">Illicit recall</th><th scope="col" className="text-right">Illicit F1</th><th scope="col" className="text-right">PR-AUC</th><th scope="col" className="text-right">ROC-AUC</th><th scope="col" className="text-right">Accuracy</th></tr></thead>
+            <tbody>
+              {comparisonLoading ? <TableRowsSkeleton rows={4} cols={7} /> : AVAILABLE_MODELS.map((model) => {
+                const data = allMetrics[model.id];
                 return (
-                  <tr
-                    key={m.id}
-                    onClick={() => setActiveModel(m.id)}
-                    className={`cursor-pointer transition-colors ${
-                      isSelected ? 'bg-[#ffa116]/10 text-[#eff1f6]' : 'hover:bg-[#2d2d2d] text-[#d1d5db]'
-                    }`}
-                  >
-                    <td className="py-2.5 font-bold flex items-center space-x-2">
-                      {m.id === 'gnn' ? (
-                        <Network className="w-3.5 h-3.5 text-[#ffa116]" />
-                      ) : (
-                        <Cpu className="w-3.5 h-3.5 text-[#8c8c8c]" />
-                      )}
-                      <span>{m.name}</span>
-                      {isSelected && (
-                        <span className="text-[9px] bg-[#ffa116] text-[#1a1a1a] px-1.5 py-0.2 rounded font-bold">
-                          VIEWING
-                        </span>
-                      )}
+                  <tr key={model.id} className={activeModel === model.id ? 'bg-accent-soft' : ''}>
+                    <td>
+                      <button type="button" className="text-link inline-flex min-h-11 items-center gap-2 text-left font-medium" aria-pressed={activeModel === model.id} onClick={() => setActiveModel(model.id)}>
+                        {model.name}{activeModel === model.id && <Check className="h-3.5 w-3.5 text-accent" aria-label="Selected" />}
+                      </button>
+                      <span className="block text-xs text-ink-muted">{model.input}</span>
                     </td>
-                    <td className="py-2 text-[11px] text-[#8c8c8c]">
-                      {m.id === 'gnn' ? (
-                        <span className="text-[#00b8a3] font-semibold">Graph + 165 Features</span>
-                      ) : (
-                        <span>165 Tabular Features</span>
-                      )}
-                    </td>
-                    <td className="py-2 text-right font-bold text-[#ef4743]">
-                      {data ? `${(data.illicit_f1 * 100).toFixed(1)}%` : '—'}
-                    </td>
-                    <td className="py-2 text-right font-semibold text-[#ef4743]">
-                      {data ? `${(data.illicit_recall * 100).toFixed(1)}%` : '—'}
-                    </td>
-                    <td className="py-2 text-right text-[#d1d5db]">
-                      {data ? `${(data.illicit_precision * 100).toFixed(1)}%` : '—'}
-                    </td>
-                    <td className="py-2 text-right font-bold text-[#ffa116]">
-                      {data ? data.pr_auc.toFixed(4) : '—'}
-                    </td>
-                    <td className="py-2 text-right font-semibold text-[#00b8a3]">
-                      {data ? data.roc_auc.toFixed(4) : '—'}
-                    </td>
-                    <td className="py-2 text-right text-[#8c8c8c]">
-                      {data ? `${(data.accuracy * 100).toFixed(1)}%` : '—'}
-                    </td>
-                    <td className="py-2 text-center">
-                      <span className="text-[10px] bg-[#1f1f1f] border border-[#3e3e3e] px-2 py-0.5 rounded text-[#8c8c8c]">
-                        {m.badge}
-                      </span>
-                    </td>
+                    <td className="text-right tabular-nums">{percent(data?.illicit_precision)}</td>
+                    <td className="text-right tabular-nums">{percent(data?.illicit_recall)}</td>
+                    <td className="text-right font-medium tabular-nums"><span className="text-accent">{percent(data?.illicit_f1)}</span></td>
+                    <td className="text-right tabular-nums">{score(data?.pr_auc)}</td>
+                    <td className="text-right tabular-nums">{score(data?.roc_auc)}</td>
+                    <td className="text-right tabular-nums">{percent(data?.accuracy)}</td>
                   </tr>
                 );
               })}
             </tbody>
           </table>
         </div>
-
-        {/* Cross-Model Metric Bar Chart */}
-        {comparisonChartData.length > 0 && (
-          <div className="pt-2 border-t border-[#333333]">
-            <div className="flex items-center justify-between mb-2">
-              <span className="text-[11px] font-bold text-[#8c8c8c] uppercase">
-                Forensic Efficacy Metric Comparison (Illicit F1, Recall & Precision)
-              </span>
-              <span className="text-[10px] text-[#8c8c8c]">Higher is better</span>
-            </div>
-            <div className="h-44 w-full">
-              <ResponsiveContainer width="100%" height="100%">
-                <BarChart data={comparisonChartData} margin={{ top: 5, right: 15, left: -20, bottom: 0 }}>
-                  <CartesianGrid strokeDasharray="3 3" stroke="#333333" />
-                  <XAxis dataKey="name" tick={{ fontSize: 10, fill: '#8c8c8c' }} />
-                  <YAxis domain={[0, 100]} tick={{ fontSize: 10, fill: '#8c8c8c' }} label={{ value: '%', angle: -90, position: 'insideLeft', fontSize: 10 }} />
-                  <Tooltip
-                    contentStyle={{ backgroundColor: '#1a1a1a', borderRadius: '4px', color: '#eff1f6', fontSize: '11px', border: '1px solid #3e3e3e', fontFamily: 'monospace' }}
-                  />
-                  <Legend wrapperStyle={{ fontSize: '11px', paddingTop: '4px' }} />
-                  <Bar dataKey="Illicit F1 (%)" fill="#ffa116" radius={[2, 2, 0, 0]} />
-                  <Bar dataKey="Illicit Recall (%)" fill="#ef4743" radius={[2, 2, 0, 0]} />
-                  <Bar dataKey="Illicit Precision (%)" fill="#00b8a3" radius={[2, 2, 0, 0]} />
-                </BarChart>
-              </ResponsiveContainer>
-            </div>
+        <div className="space-y-4 border-t border-line p-5 sm:p-6">
+          {comparisonError && <p className="data-note flex items-center gap-2" role="status"><AlertTriangle className="h-4 w-4 shrink-0 text-signal-high" aria-hidden="true" />{comparisonError}</p>}
+          <div className="grid gap-3 sm:grid-cols-3">
+            <div><p className="field-label">Training</p><p className="mt-1 text-sm text-ink tabular-nums">Timesteps 1-34</p></div>
+            <div><p className="field-label">Validation</p><p className="mt-1 text-sm text-ink tabular-nums">Timesteps 35-39</p></div>
+            <div><p className="field-label">Held-out test</p><p className="mt-1 text-sm text-ink tabular-nums">Timesteps 40-49</p></div>
           </div>
-        )}
-      </div>
-
-      {loading ? (
-        <div className="space-y-3 font-mono">
-          <div className="h-16 bg-[#262626] border border-[#333333] animate-pulse rounded"></div>
-          <div className="grid grid-cols-2 md:grid-cols-6 gap-2">
-            {[...Array(6)].map((_, i) => (
-              <div key={i} className="h-20 bg-[#262626] border border-[#333333] animate-pulse rounded"></div>
-            ))}
-          </div>
-          <div className="h-64 bg-[#262626] border border-[#333333] animate-pulse rounded"></div>
+          <p className="data-note">Recorded evaluations do not establish checkpoint availability or a working inference runtime.</p>
         </div>
-      ) : error || !metrics ? (
-        <div className="p-4 bg-[#262626] border border-[#ef4743]/50 rounded text-xs text-[#ef4743] space-y-2 font-mono">
-          <div className="font-semibold flex items-center space-x-1.5">
-            <AlertTriangle className="w-4 h-4" />
-            <span>Model Metrics Not Found</span>
+      </section>
+
+      {metrics && (
+        <section className="panel-surface grid gap-6 p-5 sm:p-6 lg:grid-cols-[minmax(0,0.7fr)_minmax(0,1.3fr)]" aria-labelledby="features-heading">
+          <div className="space-y-3">
+            <h2 id="features-heading" className="section-heading">Recorded feature weights</h2>
+            <p className="text-sm leading-relaxed text-ink-muted">Artifact-level weights for {selectedModel.name.toLowerCase()}. These are not causal explanations for a transaction.</p>
+            <p className="text-xs text-ink-muted">Relative bars use the largest recorded weight. Weight scales may differ between models.</p>
           </div>
-          <p className="text-[#d1d5db]">{error || 'Please run model training to generate evaluation artifacts.'}</p>
-        </div>
-      ) : (
-        <div className="space-y-4">
-          {/* Evaluation Strategy Banner */}
-          <div className="p-2.5 bg-[#262626] border border-[#333333] rounded flex flex-col sm:flex-row sm:items-center justify-between gap-2 text-xs font-mono">
-            <div className="flex items-center space-x-2">
-              <span className="font-bold uppercase tracking-wider text-[10px] text-[#8c8c8c]">Active Architecture:</span>
-              <span className="text-[#ffa116] font-bold">{metrics.model_name}</span>
-              <span className="text-[#6b7280]">|</span>
-              <span className="text-[#eff1f6]">{metrics.evaluation_strategy}</span>
+          {uniformWeights ? (
+            <div className="panel-inset flex items-start gap-3 p-5">
+              <Info className="mt-0.5 h-5 w-5 shrink-0 text-ink-muted" aria-hidden="true" />
+              <div><h3 className="text-sm font-medium text-ink">No meaningful ranking</h3><p className="mt-2 text-sm leading-relaxed text-ink-muted">This legacy artifact assigns equal weights to every recorded feature. A ranked chart would imply differences that are not present.</p></div>
             </div>
-            <div className="flex items-center space-x-3 text-[#8c8c8c] text-[11px]">
-              {metrics.training_duration_seconds && (
-                <span className="flex items-center space-x-1">
-                  <Timer className="w-3 h-3 text-[#ffa116]" />
-                  <span>Train: <strong className="text-[#eff1f6]">{metrics.training_duration_seconds}s</strong></span>
-                </span>
-              )}
-              <span>Train: <strong className="text-[#ffa116]">{metrics.training_period}</strong></span>
-              <span>Test: <strong className="text-[#00b8a3]">{metrics.testing_period}</strong></span>
+          ) : features.length ? (
+            <div className="space-y-3">
+              {features.slice(0, 8).map((feature) => (
+                <div key={feature.feature_index} className="grid grid-cols-[minmax(0,1fr)_minmax(48px,0.65fr)_60px] items-center gap-3 text-sm">
+                  <div className="min-w-0"><span className="font-mono text-xs text-ink">{feature.feature_name}</span><span className="block text-xs text-ink-muted">{feature.feature_index <= 92 ? 'Local' : 'Neighborhood aggregate'}</span></div>
+                  <div className="progress-track h-1.5 overflow-hidden rounded-full bg-inset" aria-hidden="true"><div className="h-full rounded-full bg-accent" style={{ width: `${maxWeight > 0 ? Math.max(0, (feature.importance / maxWeight) * 100) : 0}%` }} /></div>
+                  <span className="text-right text-ink tabular-nums">{feature.importance.toFixed(4)}</span>
+                </div>
+              ))}
             </div>
-          </div>
-
-          {/* GNN SPECIAL ARCHITECTURE CALLOUT */}
-          {activeModel === 'gnn' && (
-            <div className="p-3 bg-[#1e1e1e] border border-[#ffa116]/30 rounded font-mono text-xs space-y-1.5">
-              <div className="flex items-center justify-between">
-                <div className="flex items-center space-x-2 text-[#ffa116] font-bold">
-                  <Network className="w-4 h-4" />
-                  <span>2-Layer GraphSAGE Architecture Spotlight</span>
-                </div>
-                <span className="text-[10px] bg-[#ffa116]/20 text-[#ffa116] px-2 py-0.5 rounded font-bold">
-                  GENUINE GRAPH REASONING
-                </span>
-              </div>
-              <p className="text-[#8c8c8c] text-[11px] leading-relaxed font-sans">
-                Unlike tabular classifiers that evaluate transactions in isolation, this model runs 2-hop neighborhood message passing across the 234,355 edge transaction graph using PyTorch Geometric. Each node aggregates representation vectors from neighboring transactions to identify coordinated laundering rings, multi-hop peeling chains, and mule aggregations.
-              </p>
-            </div>
-          )}
-
-          {/* PRIMARY FORENSIC METRICS SPOTLIGHT */}
-          <div>
-            <div className="text-xs font-bold uppercase tracking-wider text-[#8c8c8c] mb-2 flex items-center space-x-1.5 font-mono">
-              <Award className="w-3.5 h-3.5 text-[#ffa116]" />
-              <span>Minority Illicit Class Forensic Metrics ({metrics.model_name})</span>
-            </div>
-            <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-6 gap-2 font-mono">
-              <div className="bg-[#262626] p-2.5 rounded border border-[#ef4743]/30 bg-[#ef4743]/5">
-                <div className="text-[10px] font-semibold text-[#ef4743] uppercase tracking-wider">Illicit Precision</div>
-                <div className="text-xl font-bold text-[#ef4743] mt-0.5">
-                  {(metrics.illicit_precision * 100).toFixed(1)}%
-                </div>
-                <div className="text-[9px] text-[#8c8c8c] mt-0.5">True illicit / Flags</div>
-              </div>
-
-              <div className="bg-[#262626] p-2.5 rounded border border-[#ef4743]/30 bg-[#ef4743]/5">
-                <div className="text-[10px] font-semibold text-[#ef4743] uppercase tracking-wider">Illicit Recall</div>
-                <div className="text-xl font-bold text-[#ef4743] mt-0.5">
-                  {(metrics.illicit_recall * 100).toFixed(1)}%
-                </div>
-                <div className="text-[9px] text-[#8c8c8c] mt-0.5">Catch rate ({metrics.confusion_matrix.true_positive} caught)</div>
-              </div>
-
-              <div className="bg-[#262626] p-2.5 rounded border border-[#ef4743]/30 bg-[#ef4743]/5">
-                <div className="text-[10px] font-semibold text-[#ef4743] uppercase tracking-wider">Illicit F1 Score</div>
-                <div className="text-xl font-bold text-[#ef4743] mt-0.5">
-                  {(metrics.illicit_f1 * 100).toFixed(1)}%
-                </div>
-                <div className="text-[9px] text-[#8c8c8c] mt-0.5">Harmonic balance</div>
-              </div>
-
-              <div className="bg-[#262626] p-2.5 rounded border border-[#333333]">
-                <div className="text-[10px] font-semibold text-[#8c8c8c] uppercase tracking-wider">PR-AUC</div>
-                <div className="text-xl font-bold text-[#ffa116] mt-0.5">
-                  {metrics.pr_auc.toFixed(4)}
-                </div>
-                <div className="text-[9px] text-[#6b7280] mt-0.5">Precision-Recall Area</div>
-              </div>
-
-              <div className="bg-[#262626] p-2.5 rounded border border-[#333333]">
-                <div className="text-[10px] font-semibold text-[#8c8c8c] uppercase tracking-wider">ROC-AUC</div>
-                <div className="text-xl font-bold text-[#00b8a3] mt-0.5">
-                  {metrics.roc_auc.toFixed(4)}
-                </div>
-                <div className="text-[9px] text-[#6b7280] mt-0.5">Discrimination power</div>
-              </div>
-
-              <div className="bg-[#262626] p-2.5 rounded border border-[#333333]">
-                <div className="text-[10px] font-semibold text-[#8c8c8c] uppercase tracking-wider">Accuracy</div>
-                <div className="text-xl font-bold text-[#eff1f6] mt-0.5">
-                  {(metrics.accuracy * 100).toFixed(1)}%
-                </div>
-                <div className="text-[9px] text-[#6b7280] mt-0.5">Global correctness</div>
-              </div>
-            </div>
-          </div>
-
-          {/* CHARTS: ROC Curve & PR Curve */}
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-3 font-mono">
-            {/* PR Curve */}
-            <div className="bg-[#262626] p-3 rounded border border-[#333333] space-y-2">
-              <div className="flex items-center justify-between border-b border-[#333333] pb-1.5">
-                <h3 className="text-xs font-bold uppercase tracking-wider text-[#eff1f6]">
-                  Precision-Recall Curve (PR-AUC: {metrics.pr_auc.toFixed(3)})
-                </h3>
-                <span className="text-[10px] text-[#ffa116]">Minority Class Priority</span>
-              </div>
-              <div className="h-52 w-full">
-                <ResponsiveContainer width="100%" height="100%">
-                  <LineChart data={metrics.pr_curve} margin={{ top: 5, right: 15, left: -20, bottom: 0 }}>
-                    <CartesianGrid strokeDasharray="3 3" stroke="#333333" />
-                    <XAxis dataKey="recall" domain={[0, 1]} tick={{ fontSize: 10, fill: '#8c8c8c' }} label={{ value: 'Recall', position: 'insideBottomRight', offset: -5, fontSize: 10 }} />
-                    <YAxis domain={[0, 1]} tick={{ fontSize: 10, fill: '#8c8c8c' }} label={{ value: 'Precision', angle: -90, position: 'insideLeft', fontSize: 10 }} />
-                    <Tooltip
-                      contentStyle={{ backgroundColor: '#1a1a1a', borderRadius: '4px', color: '#eff1f6', fontSize: '11px', border: '1px solid #3e3e3e', fontFamily: 'monospace' }}
-                    />
-                    <Line type="monotone" dataKey="precision" stroke="#ef4743" strokeWidth={2} dot={false} />
-                  </LineChart>
-                </ResponsiveContainer>
-              </div>
-            </div>
-
-            {/* ROC Curve */}
-            <div className="bg-[#262626] p-3 rounded border border-[#333333] space-y-2">
-              <div className="flex items-center justify-between border-b border-[#333333] pb-1.5">
-                <h3 className="text-xs font-bold uppercase tracking-wider text-[#eff1f6]">
-                  ROC Curve (ROC-AUC: {metrics.roc_auc.toFixed(3)})
-                </h3>
-                <span className="text-[10px] text-[#00b8a3]">TPR vs FPR</span>
-              </div>
-              <div className="h-52 w-full">
-                <ResponsiveContainer width="100%" height="100%">
-                  <LineChart data={metrics.roc_curve} margin={{ top: 5, right: 15, left: -20, bottom: 0 }}>
-                    <CartesianGrid strokeDasharray="3 3" stroke="#333333" />
-                    <XAxis dataKey="fpr" domain={[0, 1]} tick={{ fontSize: 10, fill: '#8c8c8c' }} label={{ value: 'FPR', position: 'insideBottomRight', offset: -5, fontSize: 10 }} />
-                    <YAxis domain={[0, 1]} tick={{ fontSize: 10, fill: '#8c8c8c' }} label={{ value: 'TPR', angle: -90, position: 'insideLeft', fontSize: 10 }} />
-                    <Tooltip
-                      contentStyle={{ backgroundColor: '#1a1a1a', borderRadius: '4px', color: '#eff1f6', fontSize: '11px', border: '1px solid #3e3e3e', fontFamily: 'monospace' }}
-                    />
-                    <Line type="monotone" dataKey="tpr" stroke="#ffa116" strokeWidth={2} dot={false} />
-                  </LineChart>
-                </ResponsiveContainer>
-              </div>
-            </div>
-          </div>
-
-          {/* CONFUSION MATRIX & TOP FEATURE IMPORTANCES */}
-          <div className="grid grid-cols-1 md:grid-cols-3 gap-3 font-mono">
-            {/* Confusion Matrix */}
-            <div className="bg-[#262626] p-3 rounded border border-[#333333] space-y-2.5">
-              <h3 className="text-xs font-bold uppercase tracking-wider text-[#eff1f6] border-b border-[#333333] pb-1.5">
-                Test Confusion Matrix ({metrics.model_name})
-              </h3>
-              <div className="grid grid-cols-2 gap-2 text-center text-xs">
-                <div className="p-2.5 bg-[#1f1f1f] rounded border border-[#00b8a3]/30">
-                  <div className="text-[10px] text-[#00b8a3] uppercase font-semibold">True Negatives</div>
-                  <div className="text-base font-bold text-[#00b8a3] mt-0.5">
-                    {metrics.confusion_matrix.true_negative.toLocaleString()}
-                  </div>
-                  <div className="text-[9px] text-[#8c8c8c]">Licit As Licit</div>
-                </div>
-
-                <div className="p-2.5 bg-[#1f1f1f] rounded border border-[#ffc01e]/30">
-                  <div className="text-[10px] text-[#ffc01e] uppercase font-semibold">False Positives</div>
-                  <div className="text-base font-bold text-[#ffc01e] mt-0.5">
-                    {metrics.confusion_matrix.false_positive.toLocaleString()}
-                  </div>
-                  <div className="text-[9px] text-[#8c8c8c]">Licit Flagged</div>
-                </div>
-
-                <div className="p-2.5 bg-[#1f1f1f] rounded border border-[#ef4743]/30">
-                  <div className="text-[10px] text-[#ef4743] uppercase font-semibold">False Negatives</div>
-                  <div className="text-base font-bold text-[#ef4743] mt-0.5">
-                    {metrics.confusion_matrix.false_negative.toLocaleString()}
-                  </div>
-                  <div className="text-[9px] text-[#8c8c8c]">Missed Illicit</div>
-                </div>
-
-                <div className="p-2.5 bg-[#1f1f1f] rounded border border-[#00b8a3]/30">
-                  <div className="text-[10px] text-[#00b8a3] uppercase font-semibold">True Positives</div>
-                  <div className="text-base font-bold text-[#00b8a3] mt-0.5">
-                    {metrics.confusion_matrix.true_positive.toLocaleString()}
-                  </div>
-                  <div className="text-[9px] text-[#8c8c8c]">Caught Illicit</div>
-                </div>
-              </div>
-
-              {/* Explanatory callout for why the total is 11,184 */}
-              <div className="text-[10px] bg-[#1a1a1a] p-2 rounded border border-[#333333] space-y-1 font-mono">
-                <div className="flex justify-between items-center text-[#eff1f6] font-semibold border-b border-[#2a2a2a] pb-1">
-                  <span>Held-Out Test Set (Steps 40–49):</span>
-                  <span className="text-[#ffa116]">
-                    {(metrics.confusion_matrix.true_negative + metrics.confusion_matrix.false_positive + metrics.confusion_matrix.false_negative + metrics.confusion_matrix.true_positive).toLocaleString()} txs
-                  </span>
-                </div>
-                <div className="text-[9px] text-[#8c8c8c] leading-relaxed">
-                  <div>• <strong>157,205 Unlabeled txs</strong> excluded (ground truth unknown).</div>
-                  <div>• <strong>35,380 Earlier labeled txs</strong> kept in Train (1–34) &amp; Val (35–39) sets to prevent data leakage.</div>
-                </div>
-              </div>
-            </div>
-
-            {/* Feature Importances */}
-            <div className="md:col-span-2 bg-[#262626] p-3 rounded border border-[#333333] space-y-2.5">
-              <h3 className="text-xs font-bold uppercase tracking-wider text-[#eff1f6] border-b border-[#333333] pb-1.5">
-                Top Contributing Feature / Channel Weights ({metrics.model_name})
-              </h3>
-              <div className="overflow-y-auto max-h-56 space-y-1 pr-1">
-                {metrics.feature_importances && metrics.feature_importances.length > 0 ? (
-                  metrics.feature_importances.slice(0, 10).map((f, i) => (
-                    <div key={i} className="flex items-center justify-between text-xs p-1.5 bg-[#1e1e1e] rounded border border-[#333333]">
-                      <div className="flex items-center space-x-2">
-                        <span className="text-[#8c8c8c] text-[10px]">#{i + 1}</span>
-                        <span className="font-semibold text-[#eff1f6]">{f.feature_name}</span>
-                        <span className="text-[10px] text-[#8c8c8c]">({f.category})</span>
-                      </div>
-                      <div className="flex items-center space-x-2">
-                        <div className="w-24 bg-[#2a2a2a] h-1.5 rounded-full overflow-hidden">
-                          <div
-                            className="bg-[#ffa116] h-1.5 rounded-full"
-                            style={{ width: `${(f.importance / (metrics.feature_importances[0]?.importance || 1)) * 100}%` }}
-                          ></div>
-                        </div>
-                        <span className="text-[#d1d5db] font-bold w-12 text-right">
-                          {(f.importance * 100).toFixed(2)}%
-                        </span>
-                      </div>
-                    </div>
-                  ))
-                ) : (
-                  <div className="text-xs text-[#8c8c8c] py-4 text-center">
-                    Feature importances not recorded for this model configuration.
-                  </div>
-                )}
-              </div>
-            </div>
-          </div>
-
-          {/* LIVE BENCHMARK: 20 UNSEEN TEST TRANSACTIONS */}
-          <div className="bg-[#262626] p-4 rounded border border-[#333333] space-y-3 font-mono">
-            <div className="flex flex-col md:flex-row md:items-center justify-between gap-2 border-b border-[#333333] pb-3">
-              <div className="space-y-1">
-                <div className="flex items-center space-x-2">
-                  <FlaskConical className="w-4 h-4 text-[#ffa116]" />
-                  <h3 className="text-sm font-bold uppercase tracking-wider text-[#eff1f6]">
-                    Live Benchmark: 20 Unseen Test Transactions
-                  </h3>
-                  <span className="px-2 py-0.5 text-[10px] bg-[#ffa116]/10 text-[#ffa116] border border-[#ffa116]/30 rounded">
-                    Timesteps 40–49 Held-Out Test Set
-                  </span>
-                </div>
-                <p className="text-xs text-[#8c8c8c]">
-                  Real unseen transactions with ground-truth labels evaluated live using <span className="text-[#eff1f6] font-semibold">{metrics.model_name}</span>.
-                </p>
-              </div>
-
-              {unseenData && (
-                <div className="flex items-center space-x-2 text-xs">
-                  <div className="bg-[#1f1f1f] px-3 py-1.5 rounded border border-[#00b8a3]/40 flex items-center space-x-2">
-                    <span className="text-[10px] text-[#8c8c8c] uppercase">Accuracy:</span>
-                    <span className="font-bold text-[#00b8a3] text-sm">
-                      {unseenData.correct_predictions} / {unseenData.total_evaluated} ({unseenData.accuracy_pct})
-                    </span>
-                  </div>
-                  <div className="bg-[#1f1f1f] px-3 py-1.5 rounded border border-[#333333] hidden sm:flex items-center space-x-2">
-                    <span className="text-[10px] text-[#8c8c8c] uppercase">Licit Precision:</span>
-                    <span className="font-bold text-[#eff1f6]">{unseenData.licit_precision}</span>
-                  </div>
-                  <div className="bg-[#1f1f1f] px-3 py-1.5 rounded border border-[#333333] hidden sm:flex items-center space-x-2">
-                    <span className="text-[10px] text-[#8c8c8c] uppercase">Illicit Caught:</span>
-                    <span className="font-bold text-[#ffa116]">{unseenData.illicit_recall}</span>
-                  </div>
-                </div>
-              )}
-            </div>
-
-            {unseenLoading ? (
-              <div className="text-center py-8 text-xs text-[#8c8c8c]">
-                Evaluating model on 20 unseen test transactions...
-              </div>
-            ) : unseenData && unseenData.transactions ? (
-              <div className="overflow-x-auto">
-                <table className="w-full text-left text-xs border-collapse">
-                  <thead>
-                    <tr className="border-b border-[#333333] text-[#8c8c8c] text-[11px] uppercase bg-[#1e1e1e]">
-                      <th className="py-2 px-3 font-semibold">Tx ID</th>
-                      <th className="py-2 px-2 font-semibold">Snapshot</th>
-                      <th className="py-2 px-3 font-semibold">Forensic Scenario</th>
-                      <th className="py-2 px-2 font-semibold text-center">Ground Truth</th>
-                      <th className="py-2 px-2 font-semibold text-center">Model Prediction</th>
-                      <th className="py-2 px-2 font-semibold text-right">P(Illicit)</th>
-                      <th className="py-2 px-2 font-semibold text-center">Risk Level</th>
-                      <th className="py-2 px-3 font-semibold text-center">Match Status</th>
-                    </tr>
-                  </thead>
-                  <tbody className="divide-y divide-[#333333]/50">
-                    {unseenData.transactions.map((tx: any, idx: number) => (
-                      <tr
-                        key={tx.transaction_id || idx}
-                        className={`hover:bg-[#202020] transition-colors ${
-                          !tx.match ? 'bg-[#ef4743]/5' : ''
-                        }`}
-                      >
-                        <td className="py-2 px-3 text-[#eff1f6] font-mono text-[11px]">
-                          <span className="text-[#8c8c8c] mr-1">#{idx + 1}</span>
-                          <span className="hover:text-[#ffa116] cursor-pointer" title={`Transaction ${tx.transaction_id}`}>
-                            {tx.transaction_id}
-                          </span>
-                        </td>
-                        <td className="py-2 px-2 text-[#8c8c8c] text-[11px]">
-                          Step {tx.time_step}
-                        </td>
-                        <td className="py-2 px-3 text-[#d1d5db] text-[11px]">
-                          {tx.scenario}
-                        </td>
-                        <td className="py-2 px-2 text-center">
-                          <LabelBadge label={tx.ground_truth} />
-                        </td>
-                        <td className="py-2 px-2 text-center">
-                          <LabelBadge label={tx.prediction} isPrediction />
-                        </td>
-                        <td className="py-2 px-2 text-right font-mono">
-                          <div className="flex items-center justify-end space-x-1.5">
-                            <span className={tx.probability >= 0.5 ? 'text-[#ef4743] font-bold' : 'text-[#8c8c8c]'}>
-                              {(tx.probability * 100).toFixed(1)}%
-                            </span>
-                            <div className="w-12 bg-[#1e1e1e] h-1 rounded-full overflow-hidden hidden lg:block">
-                              <div
-                                className={`h-1 rounded-full ${
-                                  tx.probability >= 0.5 ? 'bg-[#ef4743]' : 'bg-[#00b8a3]'
-                                }`}
-                                style={{ width: `${Math.max(tx.probability * 100, 3)}%` }}
-                              />
-                            </div>
-                          </div>
-                        </td>
-                        <td className="py-2 px-2 text-center">
-                          <RiskBadge score={tx.risk_score} level={tx.risk_level} />
-                        </td>
-                        <td className="py-2 px-3 text-center">
-                          {tx.match ? (
-                            <span className="inline-flex items-center space-x-1 px-2 py-0.5 rounded text-[10px] font-semibold bg-[#00b8a3]/10 text-[#00b8a3] border border-[#00b8a3]/30">
-                              <Check className="w-3 h-3" />
-                              <span>CORRECT</span>
-                            </span>
-                          ) : (
-                            <span className="inline-flex items-center space-x-1 px-2 py-0.5 rounded text-[10px] font-semibold bg-[#ef4743]/15 text-[#ef4743] border border-[#ef4743]/40">
-                              <X className="w-3 h-3" />
-                              <span>{tx.ground_truth === 'ILLICIT' ? 'EVASION / MISSED' : 'FALSE ALARM'}</span>
-                            </span>
-                          )}
-                        </td>
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
-
-                {/* Explanatory takeaway */}
-                <div className="mt-3 p-3 bg-[#1e1e1e] rounded border border-[#333333] text-[11px] text-[#8c8c8c] space-y-1">
-                  <div className="text-[#eff1f6] font-semibold flex items-center space-x-1.5">
-                    <ShieldAlert className="w-3.5 h-3.5 text-[#ffa116]" />
-                    <span>Forensic Generalization Summary:</span>
-                  </div>
-                  <div className="leading-relaxed">
-                    • <strong>10/10 (100%) Licit Precision</strong>: Zero false positives on legitimate custody transfers, merchant payments, and mining payouts.
-                  </div>
-                  <div className="leading-relaxed">
-                    • <strong>Adversary Evasion Profile</strong>: High-confidence captures (99.8%+) on ransomware and mixers in steps 40–42. Misses in late steps 48–49 reflect structural laundering drift where transactions mimic normal consumer volume before mixing.
-                  </div>
-                </div>
-              </div>
-            ) : (
-              <div className="text-center py-6 text-xs text-[#8c8c8c]">
-                No unseen test data available.
-              </div>
-            )}
-          </div>
-        </div>
+          ) : <p className="self-center text-sm text-ink-muted">Feature weights were not recorded for this model.</p>}
+        </section>
       )}
+
+      <section className="panel-surface min-w-0 overflow-hidden" aria-labelledby="benchmark-heading">
+        <div className="space-y-4 p-5 sm:p-6">
+          <div className="flex flex-wrap items-center justify-between gap-3">
+            <div className="flex items-center gap-2.5"><FlaskConical className="h-4 w-4 text-ink-muted" aria-hidden="true" /><h2 id="benchmark-heading" className="section-heading">Precomputed Benchmark</h2></div>
+            <span className="badge-pill badge-unknown">Fixture only</span>
+          </div>
+          <p className="text-sm text-ink-muted">Stored predictions for held-out transactions under {selectedModel.name.toLowerCase()}. These records are not live inference and may not exist in the investigation index.</p>
+          {benchmarkRows.length > 0 && <div className="flex flex-wrap gap-x-6 gap-y-2 text-sm text-ink-muted tabular-nums"><span><strong className="font-medium text-ink">{correctCount} / {benchmarkRows.length}</strong> correct predictions</span><span><strong className="font-medium text-ink">{illicitHits} / {illicitRows.length}</strong> known illicit nodes found</span></div>}
+        </div>
+        {benchmarkLoading ? (
+          <p className="px-6 py-12 text-sm text-ink-muted" role="status">Loading stored benchmark records...</p>
+        ) : benchmarkError ? (
+          <div className="flex flex-wrap items-center justify-between gap-3 border-t border-line p-5 sm:p-6"><p className="data-note" role="alert">{benchmarkError}</p><button type="button" className="btn-secondary" onClick={() => setRefreshKey((key) => key + 1)}>Retry benchmark</button></div>
+        ) : benchmarkRows.length ? (
+          <>
+            <div className="overflow-x-auto" tabIndex={0} role="region" aria-label="Precomputed benchmark records">
+              <table className="tx-table min-w-[680px]">
+                <thead><tr><th scope="col">Transaction ID</th><th scope="col">Step</th><th scope="col">Known label</th><th scope="col">Prediction</th><th scope="col" className="text-right">P(illicit)</th><th scope="col">Outcome</th><th scope="col"><span className="sr-only">Fixture details</span></th></tr></thead>
+                <tbody>
+                  {visibleBenchmark.map((transaction) => {
+                    const expanded = expandedTransaction === transaction.transaction_id;
+                    const correct = transaction.prediction === transaction.ground_truth;
+                    return (
+                      <React.Fragment key={transaction.transaction_id}>
+                        <tr>
+                          <td className="font-mono text-xs">{transaction.transaction_id}</td>
+                          <td className="text-ink-muted tabular-nums">{transaction.time_step}</td>
+                          <td><LabelBadge label={transaction.ground_truth} /></td>
+                          <td><LabelBadge label={transaction.prediction} isPrediction /></td>
+                          <td className="text-right tabular-nums">{percent(transaction.probability)}</td>
+                          <td><span className={correct ? 'text-ink-muted' : transaction.ground_truth === 'ILLICIT' ? 'text-signal-illicit' : 'text-signal-high'}>{correct ? 'Correct' : transaction.prediction === 'UNKNOWN' ? 'No prediction' : transaction.ground_truth === 'ILLICIT' ? 'Missed illicit' : 'False alarm'}</span></td>
+                          <td><button type="button" className="btn-ghost min-h-11 min-w-11 px-2" aria-expanded={expanded} aria-controls={`fixture-${transaction.transaction_id}`} aria-label={`${expanded ? 'Hide' : 'Show'} fixture details for transaction ${transaction.transaction_id}`} onClick={() => setExpandedTransaction(expanded ? null : transaction.transaction_id)}><ChevronDown className={`h-4 w-4 transition-transform ${expanded ? 'rotate-180' : ''}`} aria-hidden="true" /></button></td>
+                        </tr>
+                        {expanded && <tr id={`fixture-${transaction.transaction_id}`}><td colSpan={7} className="bg-inset"><div className="space-y-2 py-2"><p className="text-sm text-ink">{transaction.scenario}</p><p className="text-xs text-ink-muted">Scenario text is part of the benchmark fixture, not a verified case finding. No indexed transaction dossier is opened from this record.</p></div></td></tr>}
+                      </React.Fragment>
+                    );
+                  })}
+                </tbody>
+              </table>
+            </div>
+            <div className="flex flex-wrap items-center justify-between gap-3 border-t border-line p-5 sm:p-6">
+              <p className="text-xs text-ink-muted tabular-nums">Showing {visibleBenchmark.length} of {benchmarkRows.length} stored records</p>
+              {benchmarkRows.length > 6 && <button type="button" className="btn-secondary" onClick={() => { setShowAllBenchmark((show) => !show); setExpandedTransaction(null); }}>{showAllBenchmark ? 'Show first 6 records' : `Show all ${benchmarkRows.length} records`}</button>}
+            </div>
+          </>
+        ) : <p className="px-6 py-10 text-sm text-ink-muted">No benchmark records are available for this model.</p>}
+      </section>
+
+      <p className="data-note flex items-start gap-2"><ShieldAlert className="mt-0.5 h-4 w-4 shrink-0 text-ink-muted" aria-hidden="true" /><span>Model outputs are probabilistic investigative leads, not legal conclusions. Corroborate findings with independent evidence.</span></p>
     </div>
   );
 };

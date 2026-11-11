@@ -12,6 +12,7 @@ import joblib
 import numpy as np
 from sklearn.linear_model import LogisticRegression
 from sklearn.ensemble import RandomForestClassifier, HistGradientBoostingClassifier
+from sklearn.inspection import permutation_importance
 from backend.app.ml.evaluate import evaluate_model_performance
 
 
@@ -34,6 +35,7 @@ def train_baseline_model(
     print(f"[ML Train] Starting training for '{model_type}' on {len(X_train):,} samples...")
 
     if model_type in ("logreg", "logistic_regression"):
+        canonical_name = "logistic_regression"
         display_name = "Logistic Regression"
         model = LogisticRegression(
             class_weight="balanced",
@@ -44,12 +46,14 @@ def train_baseline_model(
         model.fit(X_train, y_train)
         y_prob = model.predict_proba(X_test)[:, 1]
         y_pred = (y_prob >= 0.5).astype(int)
-        
-        # Feature importance from coefficients
+
+        # Feature importance from normalized linear coefficients
         importances = np.abs(model.coef_[0])
-        importances = importances / np.sum(importances)
+        imp_sum = float(np.sum(importances))
+        importances = importances / imp_sum if imp_sum > 0 else np.zeros(X_train.shape[1])
 
     elif model_type in ("rf", "random_forest"):
+        canonical_name = "random_forest"
         display_name = "Random Forest"
         model = RandomForestClassifier(
             n_estimators=100,
@@ -64,6 +68,7 @@ def train_baseline_model(
         importances = model.feature_importances_
 
     elif model_type in ("gb", "gradient_boosting", "hist_gradient_boosting"):
+        canonical_name = "gradient_boosting"
         display_name = "Gradient Boosting"
         model = HistGradientBoostingClassifier(
             class_weight="balanced",
@@ -74,9 +79,24 @@ def train_baseline_model(
         model.fit(X_train, y_train)
         y_prob = model.predict_proba(X_test)[:, 1]
         y_pred = (y_prob >= 0.5).astype(int)
-        # Permutation or approximated feature importance for HistGradientBoosting
-        # We estimate feature importances via tree splits variance
-        importances = np.ones(X_train.shape[1]) / X_train.shape[1]
+
+        # Compute real bounded permutation importance on held-out test slice
+        sample_n = min(len(X_test), 2500)
+        if sample_n > 0:
+            perm = permutation_importance(
+                model,
+                X_test[:sample_n],
+                y_test[:sample_n],
+                n_repeats=3,
+                random_state=42,
+                scoring="average_precision",
+                n_jobs=-1,
+            )
+            raw_imp = np.clip(perm.importances_mean, 0.0, None)
+            imp_sum = float(np.sum(raw_imp))
+            importances = raw_imp / imp_sum if imp_sum > 0 else np.zeros(X_train.shape[1])
+        else:
+            importances = np.zeros(X_train.shape[1])
     else:
         raise ValueError(f"Unsupported model type: {model_type}")
 
@@ -102,9 +122,9 @@ def train_baseline_model(
         })
     metrics["feature_importances"] = top_features
 
-    # Save model and metrics to disk
-    model_filename = f"{model_type}.joblib"
-    metrics_filename = f"{model_type}_metrics.json"
+    # Save model and metrics to disk using canonical filename
+    model_filename = f"{canonical_name}.joblib"
+    metrics_filename = f"{canonical_name}_metrics.json"
     joblib.dump(model, MODEL_CACHE_DIR / model_filename)
     with open(MODEL_CACHE_DIR / metrics_filename, "w", encoding="utf-8") as f:
         json.dump(metrics, f, indent=2)

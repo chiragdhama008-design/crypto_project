@@ -2,7 +2,9 @@
 TRACE-X Forensic Intelligence Platform - FastAPI Main Entrypoint.
 """
 
+import logging
 import os
+from pathlib import Path
 from contextlib import asynccontextmanager
 from fastapi import FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
@@ -10,6 +12,8 @@ from fastapi.responses import JSONResponse, FileResponse
 from fastapi.staticfiles import StaticFiles
 from backend.app.config import settings
 from backend.app.database import init_db
+
+logger = logging.getLogger("tracex")
 from backend.app.api.routes import (
     health,
     dashboard,
@@ -46,15 +50,25 @@ app = FastAPI(
     lifespan=lifespan
 )
 
-# CORS Configuration
+# CORS Configuration (avoid pairing wildcard/regex origins with allow_credentials=True)
+_configured_origins = settings.cors_origins_list
+_wildcard_cors = ("*" in _configured_origins) or (len(_configured_origins) == 0)
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=settings.cors_origins_list + ["*"],
-    allow_origin_regex=r"https?://.*",
-    allow_credentials=True,
-    allow_methods=["*"],
-    allow_headers=["*"],
+    allow_origins=["*"] if _wildcard_cors else _configured_origins,
+    allow_credentials=not _wildcard_cors,
+    allow_methods=["GET", "POST", "PATCH", "PUT", "DELETE", "OPTIONS"],
+    allow_headers=["Content-Type", "Authorization", "X-Admin-Key"],
 )
+
+
+@app.middleware("http")
+async def add_security_headers(request: Request, call_next):
+    response = await call_next(request)
+    response.headers["X-Content-Type-Options"] = "nosniff"
+    response.headers["X-Frame-Options"] = "DENY"
+    response.headers["Referrer-Policy"] = "strict-origin-when-cross-origin"
+    return response
 
 # Mount API Routers under /api
 app.include_router(health.router, prefix="/api")
@@ -70,29 +84,29 @@ app.include_router(ml.router, prefix="/api")
 app.include_router(dataset.router, prefix="/api")
 
 # Serve Frontend static assets if built (Unified Single-Service Deployment on Render)
-frontend_dist = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", "..", "frontend", "dist"))
-if os.path.exists(frontend_dist):
-    assets_dir = os.path.join(frontend_dist, "assets")
-    if os.path.exists(assets_dir):
-        app.mount("/assets", StaticFiles(directory=assets_dir), name="assets")
+frontend_dist_path = (Path(__file__).resolve().parents[2] / "frontend" / "dist").resolve()
+if frontend_dist_path.is_dir():
+    assets_dir = frontend_dist_path / "assets"
+    if assets_dir.is_dir():
+        app.mount("/assets", StaticFiles(directory=str(assets_dir)), name="assets")
 
     @app.api_route("/", methods=["GET", "HEAD"])
     async def serve_root():
-        index_file = os.path.join(frontend_dist, "index.html")
-        if os.path.exists(index_file):
-            return FileResponse(index_file)
+        index_file = frontend_dist_path / "index.html"
+        if index_file.is_file():
+            return FileResponse(str(index_file))
         return JSONResponse(status_code=404, content={"error": "Frontend index.html not found"})
 
     @app.api_route("/{full_path:path}", methods=["GET", "HEAD"])
     async def serve_spa(full_path: str):
         if full_path.startswith("api") or full_path.startswith("docs") or full_path.startswith("openapi.json"):
             return JSONResponse(status_code=404, content={"error": "Not Found"})
-        file_path = os.path.join(frontend_dist, full_path)
-        if os.path.isfile(file_path):
-            return FileResponse(file_path)
-        index_file = os.path.join(frontend_dist, "index.html")
-        if os.path.exists(index_file):
-            return FileResponse(index_file)
+        candidate = (frontend_dist_path / full_path).resolve()
+        if candidate.is_relative_to(frontend_dist_path) and candidate.is_file():
+            return FileResponse(str(candidate))
+        index_file = frontend_dist_path / "index.html"
+        if index_file.is_file():
+            return FileResponse(str(index_file))
         return JSONResponse(status_code=404, content={"error": "Frontend index.html not found"})
 else:
     @app.get("/")
@@ -108,7 +122,11 @@ else:
 
 @app.exception_handler(Exception)
 async def global_exception_handler(request: Request, exc: Exception):
+    logger.exception("Unhandled exception at %s %s", request.method, request.url.path, exc_info=exc)
+    payload = {"error": "Internal Forensic Server Error"}
+    if settings.DEBUG:
+        payload["detail"] = str(exc)
     return JSONResponse(
         status_code=500,
-        content={"error": "Internal Forensic Server Error", "detail": str(exc)}
+        content=payload
     )

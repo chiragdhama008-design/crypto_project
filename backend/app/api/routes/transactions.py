@@ -7,12 +7,11 @@ import json
 from typing import Optional
 from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlalchemy.orm import Session
-from sqlalchemy import or_
+from sqlalchemy import or_, String
 from backend.app.database import get_db
 from backend.app.models import Transaction, TransactionFeature
 from backend.app.graph.risk import calculate_neighborhood_signals
 from backend.app.ml.explain import generate_feature_signals
-from backend.app.ml.gnn_predict import predict_gnn_transaction
 
 router = APIRouter(prefix="", tags=["Transactions"])
 
@@ -44,7 +43,7 @@ def get_transactions(
             tx_id_num = int(search)
             query = query.filter(Transaction.transaction_id == tx_id_num)
         except ValueError:
-            query = query.filter(Transaction.transaction_id.cast(str).contains(search))
+            query = query.filter(Transaction.transaction_id.cast(String).contains(search))
 
     total = query.count()
     offset = (page - 1) * limit
@@ -78,11 +77,17 @@ def get_transactions(
 @router.get("/search/transactions")
 def search_transactions(query: str = Query(..., min_length=1), db: Session = Depends(get_db)):
     """Fast auto-suggest transaction search."""
+    q_clean = query.strip()
     try:
-        val = int(query)
-        res = db.query(Transaction).filter(Transaction.transaction_id == val).limit(10).all()
+        val = int(q_clean)
+        res = db.query(Transaction).filter(
+            or_(
+                Transaction.transaction_id == val,
+                Transaction.transaction_id.cast(String).contains(q_clean),
+            )
+        ).limit(10).all()
     except ValueError:
-        res = db.query(Transaction).filter(Transaction.transaction_id.cast(str).contains(query)).limit(10).all()
+        res = db.query(Transaction).filter(Transaction.transaction_id.cast(String).contains(q_clean)).limit(10).all()
 
     return [
         {
@@ -219,11 +224,17 @@ def get_transaction_intelligence(transaction_id: int, db: Session = Depends(get_
         })
 
     # 4. GNN Graph-Aware Inference
-    gnn_pred, gnn_prob, gnn_meta = predict_gnn_transaction(
-        transaction_id=transaction_id,
-        features=feats if feats else None,
-        db_session=db
-    )
+    try:
+        from backend.app.ml.gnn_predict import predict_gnn_transaction
+        gnn_pred, gnn_prob, gnn_meta = predict_gnn_transaction(
+            transaction_id=transaction_id,
+            features=feats if feats else None,
+            db_session=db
+        )
+    except FileNotFoundError:
+        gnn_pred, gnn_prob, gnn_meta = "UNKNOWN", 0.0, {"mode": "model_unavailable"}
+    except ImportError:
+        gnn_pred, gnn_prob, gnn_meta = "UNKNOWN", 0.0, {"mode": "dependency_unavailable"}
     if gnn_pred != "UNKNOWN":
         ml_signals.append({
             "name": "Graph Neural Network (GraphSAGE) Relational Score",
@@ -294,11 +305,17 @@ def get_transaction_evidence(transaction_id: int, db: Session = Depends(get_db))
         })
 
     # GNN Relational Evidence
-    gnn_pred, gnn_prob, gnn_meta = predict_gnn_transaction(
-        transaction_id=transaction_id,
-        features=None,
-        db_session=db
-    )
+    try:
+        from backend.app.ml.gnn_predict import predict_gnn_transaction
+        gnn_pred, gnn_prob, gnn_meta = predict_gnn_transaction(
+            transaction_id=transaction_id,
+            features=None,
+            db_session=db
+        )
+    except FileNotFoundError:
+        gnn_pred, gnn_prob, gnn_meta = "UNKNOWN", 0.0, {"mode": "model_unavailable"}
+    except ImportError:
+        gnn_pred, gnn_prob, gnn_meta = "UNKNOWN", 0.0, {"mode": "dependency_unavailable"}
     if gnn_pred != "UNKNOWN":
         evidence.append({
             "category": "Graph Neural Network",

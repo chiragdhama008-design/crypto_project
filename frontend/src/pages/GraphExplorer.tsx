@@ -1,14 +1,6 @@
 import React, { useEffect, useState } from 'react';
 import { useSearchParams, useNavigate } from 'react-router-dom';
-import {
-  Network,
-  Search,
-  ArrowRight,
-  Shield,
-  Layers,
-  AlertTriangle,
-  Info
-} from 'lucide-react';
+import { Network, ArrowRight, AlertTriangle } from 'lucide-react';
 import { api } from '../services/api';
 import { GraphResponse, GraphNode } from '../types/api';
 import { CytoscapeCanvas } from '../components/graph/CytoscapeCanvas';
@@ -20,10 +12,10 @@ export const GraphExplorer: React.FC = () => {
   const navigate = useNavigate();
 
   const initialTx = searchParams.get('tx') || '230425980';
-  const initialDepth = parseInt(searchParams.get('depth') || '1', 10);
+  const initialDepth = parseInt(searchParams.get('depth') || '1', 10) === 2 ? 2 : 1;
 
   const [inputTx, setInputTx] = useState(initialTx);
-  const [centerTxId, setCenterTxId] = useState(parseInt(initialTx, 10));
+  const [centerTxId, setCenterTxId] = useState(parseInt(initialTx, 10) || 230425980);
   const [depth, setDepth] = useState<number>(initialDepth);
   const [graphData, setGraphData] = useState<GraphResponse | null>(null);
   const [selectedNode, setSelectedNode] = useState<GraphNode | null>(null);
@@ -33,7 +25,8 @@ export const GraphExplorer: React.FC = () => {
   const fetchGraph = (txId: number, d: number) => {
     setLoading(true);
     setError(null);
-    api.getTransactionGraph(txId, d)
+    api
+      .getTransactionGraph(txId, d)
       .then((res) => {
         setGraphData(res);
         const center = res.nodes.find((n) => n.is_center) || res.nodes[0] || null;
@@ -64,46 +57,50 @@ export const GraphExplorer: React.FC = () => {
   };
 
   return (
-    <div className="flex flex-col h-[calc(100vh-2.75rem)] overflow-hidden bg-[#1a1a1a] text-[#eff1f6] font-sans">
-      {/* Explorer Top Toolbar - LeetCode Style */}
-      <div className="h-10 bg-[#222222] border-b border-[#333333] px-4 flex items-center justify-between flex-shrink-0">
-        <div className="flex items-center space-x-3">
-          <div className="flex items-center space-x-1.5 font-bold font-mono text-xs text-[#eff1f6]">
-            <Network className="w-3.5 h-3.5 text-[#ffa116]" />
-            <span>GRAPH EXPLORER</span>
+    <div className="flex flex-col lg:h-[calc(100vh-3.5rem)] lg:overflow-hidden text-ink">
+      {/* Explorer Control Toolbar */}
+      <div className="bg-surface/95 border-b border-line px-4 sm:px-6 py-2.5 flex flex-wrap items-center justify-between gap-3 flex-shrink-0">
+        <div className="flex flex-wrap items-center gap-3">
+          <div className="flex items-center gap-2 font-semibold text-sm text-ink">
+            <Network className="w-4 h-4 text-accent" />
+            <span>Graph Explorer</span>
           </div>
 
-          {/* Quick Center Search */}
-          <form onSubmit={handleSearchSubmit} className="flex items-center space-x-1">
+          {/* Center TX Search */}
+          <form onSubmit={handleSearchSubmit} className="flex items-center gap-1.5">
             <input
               type="text"
+              aria-label="Center transaction ID"
               placeholder="Center TX ID..."
               value={inputTx}
               onChange={(e) => setInputTx(e.target.value)}
-              className="w-36 text-xs px-2 py-0.5 bg-[#1a1a1a] border border-[#3e3e3e] rounded font-mono text-[#eff1f6] placeholder-[#6b7280] focus:outline-none focus:border-[#ffa116]"
+              className="w-36 sm:w-40 h-8 px-2.5 text-xs bg-inset border border-line-strong rounded-lg font-mono text-ink placeholder-ink-muted focus:outline-none focus:border-[var(--accent-primary)] tabular-nums"
             />
-            <button
-              type="submit"
-              className="px-2 py-0.5 bg-[#2a2a2a] hover:bg-[#333333] text-[#eff1f6] border border-[#3e3e3e] text-xs rounded font-mono transition-colors"
-            >
+            <button type="submit" className="btn-secondary min-h-[32px] py-1 px-3 text-xs">
               Trace
             </button>
           </form>
 
-          {/* Hop Controls */}
-          <div className="flex items-center border border-[#3e3e3e] rounded overflow-hidden text-xs font-mono">
+          {/* Hop Segmented Control */}
+          <div className="inline-flex items-center bg-inset border border-line-strong rounded-lg p-0.5 text-xs font-mono">
             <button
+              type="button"
               onClick={() => handleDepthChange(1)}
-              className={`px-2.5 py-0.5 font-medium transition-colors ${
-                depth === 1 ? 'bg-[#ffa116] text-[#1a1a1a] font-bold' : 'bg-[#262626] text-[#8c8c8c] hover:bg-[#2d2d2d]'
+              className={`px-3 py-1 rounded-md transition-colors ${
+                depth === 1
+                  ? 'bg-accent text-[var(--accent-ink)] font-semibold'
+                  : 'text-ink-muted hover:text-ink'
               }`}
             >
               1 Hop
             </button>
             <button
+              type="button"
               onClick={() => handleDepthChange(2)}
-              className={`px-2.5 py-0.5 font-medium border-l border-[#3e3e3e] transition-colors ${
-                depth === 2 ? 'bg-[#ffa116] text-[#1a1a1a] font-bold' : 'bg-[#262626] text-[#8c8c8c] hover:bg-[#2d2d2d]'
+              className={`px-3 py-1 rounded-md transition-colors ${
+                depth === 2
+                  ? 'bg-accent text-[var(--accent-ink)] font-semibold'
+                  : 'text-ink-muted hover:text-ink'
               }`}
             >
               2 Hops
@@ -111,48 +108,57 @@ export const GraphExplorer: React.FC = () => {
           </div>
         </div>
 
-        {/* Graph Meta stats */}
+        {/* Subgraph Counters */}
         {graphData && (
-          <div className="flex items-center space-x-3 text-xs text-[#8c8c8c] font-mono">
-            <span>Nodes: <strong className="text-[#eff1f6]">{graphData.metadata.total_nodes}</strong></span>
-            <span>Edges: <strong className="text-[#eff1f6]">{graphData.metadata.total_edges}</strong></span>
-            <span className="text-[#ef4743]">Illicit: <strong>{graphData.metadata.illicit_count}</strong></span>
+          <div className="flex flex-wrap items-center gap-3 text-xs text-ink-muted font-mono tabular-nums">
+            <span>
+              Nodes: <strong className="text-ink">{graphData.metadata.total_nodes}</strong>
+            </span>
+            <span>
+              Edges: <strong className="text-ink">{graphData.metadata.total_edges}</strong>
+            </span>
+            <span className="text-signal-illicit">
+              Illicit: <strong>{graphData.metadata.illicit_count}</strong>
+            </span>
             {graphData.metadata.truncated && (
-              <span className="text-[10px] bg-[#ffa116]/15 text-[#ffa116] border border-[#ffa116]/30 px-1 py-0.2 rounded font-mono">
-                Bounded (max 120)
-              </span>
+              <span className="badge-pill badge-accent">Bounded (max {graphData.metadata.max_limit})</span>
             )}
           </div>
         )}
       </div>
 
-      {/* Main Graph Area with Side Panel */}
-      <div className="flex-1 flex overflow-hidden relative">
-        {/* Canvas Area */}
-        <div className="flex-1 h-full p-2 bg-[#1a1a1a]">
+      {/* Main Workspace: Responsive Graph Canvas + Node Inspector */}
+      <div className="flex-1 flex flex-col lg:flex-row lg:overflow-hidden">
+        {/* Canvas Container */}
+        <div className="flex-1 min-h-[430px] h-[56vh] lg:h-full p-3">
           {loading ? (
-            <div className="w-full h-full bg-[#141414] border border-[#333333] rounded flex items-center justify-center space-y-2">
-              <div className="text-center space-y-2">
-                <div className="w-6 h-6 border-2 border-[#ffa116] border-t-transparent rounded-full animate-spin mx-auto"></div>
-                <div className="text-xs font-mono text-[#8c8c8c]">Traversing Bitcoin network graph...</div>
+            <div className="w-full h-full panel-inset flex items-center justify-center">
+              <div className="text-center space-y-2.5 font-mono">
+                <div className="w-7 h-7 border-2 border-[var(--accent-primary)] border-t-transparent rounded-full animate-spin mx-auto" />
+                <div className="text-xs text-ink-muted">
+                  Traversing {depth}-hop Bitcoin neighborhood...
+                </div>
               </div>
             </div>
           ) : error ? (
-            <div className="w-full h-full bg-[#141414] border border-[#333333] rounded flex items-center justify-center p-6">
-              <div className="max-w-md bg-[#262626] p-4 border border-[#ef4743]/50 rounded shadow-lg text-xs space-y-2 font-mono">
-                <div className="font-semibold text-[#ef4743] flex items-center space-x-1.5">
+            <div className="w-full h-full panel-inset flex items-center justify-center p-6">
+              <div className="max-w-md panel-surface p-5 border-[var(--signal-illicit-border)] space-y-3 font-mono text-xs">
+                <div className="font-semibold text-signal-illicit flex items-center gap-2">
                   <AlertTriangle className="w-4 h-4" />
                   <span>Graph Traversal Notice</span>
                 </div>
-                <p className="text-[#d1d5db]">{error}</p>
-                <div className="pt-1">
-                  <button
-                    onClick={() => { setInputTx('230425980'); setCenterTxId(230425980); }}
-                    className="text-[#ffa116] hover:underline font-mono"
-                  >
-                    Load Sample Transaction #230425980
-                  </button>
-                </div>
+                <p className="text-ink-secondary font-sans">{error}</p>
+                <button
+                  type="button"
+                  onClick={() => {
+                    setInputTx('230425980');
+                    setCenterTxId(230425980);
+                    setSearchParams({ tx: '230425980', depth: depth.toString() });
+                  }}
+                  className="btn-secondary text-xs"
+                >
+                  Load Sample Transaction #230425980
+                </button>
               </div>
             </div>
           ) : graphData ? (
@@ -165,100 +171,108 @@ export const GraphExplorer: React.FC = () => {
           ) : null}
         </div>
 
-        {/* Selected Node Side Inspector Panel - LeetCode Dark Style */}
-        <div className="w-72 border-l border-[#333333] bg-[#262626] h-full overflow-y-auto p-3.5 space-y-3 flex-shrink-0 font-sans">
-          <div className="border-b border-[#333333] pb-2 font-mono">
-            <div className="text-[10px] font-bold uppercase tracking-wider text-[#8c8c8c]">Node Inspector</div>
-            <h2 className="text-xs font-bold text-[#eff1f6] mt-0.5">Selected Entity Attributes</h2>
+        {/* Selected Node Side Inspector Drawer */}
+        <aside className="w-full lg:w-80 border-t lg:border-t-0 lg:border-l border-line bg-surface lg:h-full overflow-y-auto p-5 space-y-4 flex-shrink-0">
+          <div className="pb-3 border-b border-line">
+            <div className="text-[10px] font-mono font-semibold uppercase tracking-[0.12em] text-ink-muted">
+              Node Inspector
+            </div>
+            <h2 className="text-[15px] font-semibold text-ink mt-0.5">
+              Selected Entity Attributes
+            </h2>
           </div>
 
           {selectedNode ? (
-            <div className="space-y-3 font-mono">
-              <div className="space-y-1">
-                <div className="text-[10px] text-[#8c8c8c]">Transaction ID</div>
-                <div className="font-bold text-sm text-[#eff1f6] flex items-center space-x-1.5">
-                  <span>TX #{selectedNode.transaction_id}</span>
+            <div className="space-y-4 font-mono">
+              <div className="panel-inset p-3 space-y-1">
+                <div className="text-[10px] uppercase tracking-wider text-ink-muted">
+                  Transaction ID
+                </div>
+                <div className="flex items-center justify-between gap-2">
+                  <span className="font-semibold text-sm text-ink tabular-nums">
+                    TX #{selectedNode.transaction_id}
+                  </span>
                   {selectedNode.is_center && (
-                    <span className="text-[9px] bg-[#ffa116]/20 text-[#ffa116] border border-[#ffa116]/30 px-1 py-0.2 rounded font-bold">
-                      CENTER
-                    </span>
+                    <span className="badge-pill badge-accent">ORIGIN</span>
                   )}
                 </div>
               </div>
 
-              <div className="space-y-1.5 text-xs">
-                <div className="flex justify-between py-1 border-b border-[#333333]">
-                  <span className="text-[#8c8c8c]">Hop Distance</span>
-                  <span className="font-semibold text-[#eff1f6]">
+              <div className="divide-y divide-line text-xs tabular-nums">
+                <div className="flex justify-between py-2">
+                  <span className="text-ink-muted">Hop Distance</span>
+                  <span className="font-semibold text-ink">
                     {selectedNode.hop_level === 0 ? 'Origin (0)' : `${selectedNode.hop_level} Hop`}
                   </span>
                 </div>
-                <div className="flex justify-between py-1 border-b border-[#333333]">
-                  <span className="text-[#8c8c8c]">Time Step</span>
-                  <span className="font-semibold text-[#eff1f6]">Step {selectedNode.time_step}</span>
+                <div className="flex justify-between py-2">
+                  <span className="text-ink-muted">Snapshot Step</span>
+                  <span className="font-semibold text-ink">Step {selectedNode.time_step}</span>
                 </div>
-                <div className="flex justify-between py-1 border-b border-[#333333]">
-                  <span className="text-[#8c8c8c]">Ground Truth</span>
+                <div className="flex justify-between py-2 items-center">
+                  <span className="text-ink-muted">Ground Truth</span>
                   <LabelBadge label={selectedNode.label} />
                 </div>
-                <div className="flex justify-between py-1 border-b border-[#333333]">
-                  <span className="text-[#8c8c8c]">Prediction</span>
+                <div className="flex justify-between py-2 items-center">
+                  <span className="text-ink-muted">ML Prediction</span>
                   {selectedNode.prediction ? (
                     <LabelBadge label={selectedNode.prediction} isPrediction />
                   ) : (
-                    <span className="text-[#6b7280] text-xs">—</span>
+                    <span className="text-ink-muted">—</span>
                   )}
                 </div>
-                <div className="flex justify-between py-1 border-b border-[#333333]">
-                  <span className="text-[#8c8c8c]">Probability</span>
-                  <span className="font-semibold text-[#d1d5db]">
+                <div className="flex justify-between py-2">
+                  <span className="text-ink-muted">P(Illicit)</span>
+                  <span className="font-semibold text-ink">
                     {selectedNode.probability !== null && selectedNode.probability !== undefined
                       ? `${(selectedNode.probability * 100).toFixed(1)}%`
                       : '—'}
                   </span>
                 </div>
-                <div className="flex justify-between py-1 border-b border-[#333333]">
-                  <span className="text-[#8c8c8c]">Risk Assessment</span>
+                <div className="flex justify-between py-2 items-center">
+                  <span className="text-ink-muted">Risk Assessment</span>
                   <RiskBadge score={selectedNode.risk_score} level={selectedNode.risk_level} />
                 </div>
-                <div className="flex justify-between py-1 border-b border-[#333333]">
-                  <span className="text-[#8c8c8c]">Degree</span>
-                  <span className="text-[#d1d5db] text-[11px]">
+                <div className="flex justify-between py-2">
+                  <span className="text-ink-muted">Flow Degree</span>
+                  <span className="text-ink-secondary">
                     {selectedNode.in_degree}↓ {selectedNode.out_degree}↑
                   </span>
                 </div>
               </div>
 
-              {/* Action Buttons */}
-              <div className="pt-2 space-y-1.5">
+              <div className="pt-2 space-y-2 font-sans">
                 <button
+                  type="button"
                   onClick={() => navigate(`/transactions/${selectedNode.transaction_id}`)}
-                  className="w-full py-1.5 bg-[#ffa116] hover:bg-[#ffb84d] text-[#1a1a1a] rounded text-xs font-bold flex items-center justify-center space-x-1.5 shadow-sm transition-colors"
+                  className="btn-primary w-full"
                 >
                   <span>Open Full Dossier</span>
-                  <ArrowRight className="w-3 h-3" />
+                  <ArrowRight className="w-4 h-4" />
                 </button>
 
                 {!selectedNode.is_center && (
                   <button
+                    type="button"
                     onClick={() => {
-                      setInputTx(selectedNode.transaction_id.toString());
-                      setCenterTxId(selectedNode.transaction_id);
-                      setSearchParams({ tx: selectedNode.transaction_id.toString(), depth: depth.toString() });
+                      const nextId = selectedNode.transaction_id;
+                      setInputTx(nextId.toString());
+                      setCenterTxId(nextId);
+                      setSearchParams({ tx: nextId.toString(), depth: depth.toString() });
                     }}
-                    className="w-full py-1.5 bg-[#2a2a2a] border border-[#3e3e3e] hover:bg-[#333333] text-[#eff1f6] rounded text-xs font-medium flex items-center justify-center space-x-1 transition-colors"
+                    className="btn-secondary w-full"
                   >
-                    <span>Center Graph Here</span>
+                    Center Graph Here
                   </button>
                 )}
               </div>
             </div>
           ) : (
-            <div className="text-center py-8 text-[#8c8c8c] text-xs font-mono">
-              Click any node in the canvas to inspect its forensic properties.
+            <div className="text-center py-10 text-ink-muted text-xs font-mono">
+              Click any node inside the graph canvas to inspect its forensic telemetry.
             </div>
           )}
-        </div>
+        </aside>
       </div>
     </div>
   );

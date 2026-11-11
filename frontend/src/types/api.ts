@@ -8,12 +8,25 @@ export interface TransactionSummary {
   time_step: number;
   known_label: KnownLabel;
   prediction?: PredictionLabel;
+  probability?: number | null;
   prediction_probability?: number | null;
   risk_score: number;
   risk_level: RiskLevel;
   in_degree: number;
   out_degree: number;
   total_degree: number;
+  trigger_reasons?: string[];
+}
+
+export interface HighRiskQueueResponse {
+  total: number;
+  page: number;
+  limit: number;
+  critical_count: number;
+  high_count: number;
+  medium_count: number;
+  low_count: number;
+  transactions: TransactionSummary[];
 }
 
 export interface PaginatedTransactionsResponse {
@@ -200,8 +213,8 @@ export interface ModelMetrics {
     false_negative: number;
     true_positive: number;
   };
-  roc_curve: Array<{ fpr: number; tpr: number; threshold: number }>;
-  pr_curve: Array<{ precision: number; recall: number; threshold: number }>;
+  roc_curve: Array<{ fpr: number; tpr: number; threshold: number | null }>;
+  pr_curve: Array<{ precision: number; recall: number; threshold: number | null }>;
   feature_importances: Array<{
     feature_index: number;
     feature_name: string;
@@ -224,6 +237,7 @@ export interface SystemHealth {
     has_supabase_url: boolean;
     has_database_url: boolean;
     total_transactions: number;
+    transactions_in_db: number;
   };
   ingestion: {
     status: string;
@@ -232,4 +246,57 @@ export interface SystemHealth {
   };
   trained_models: string[];
   active_model: string;
+}
+
+export interface ModelSummary {
+  model_name: string;
+  accuracy: number;
+  precision: number;
+  recall: number;
+  f1: number;
+  roc_auc: number;
+  pr_auc: number;
+  is_active: boolean;
+}
+
+export interface DatasetStatus {
+  dataset_name: string;
+  dataset_configured: boolean;
+  dataset_directory_name: string | null;
+  files_verified: { classes_file: boolean; edgelist_file: boolean; features_file: boolean };
+  database_ingestion: {
+    status: string;
+    rows_processed: number;
+    started_at: string | null;
+    completed_at: string | null;
+    transactions_in_db: number;
+    edges_in_db: number;
+  };
+  metadata: {
+    total_transactions: number;
+    total_edges: number;
+    features_count: number;
+    time_steps_count: number;
+    known_illicit: number;
+    known_licit: number;
+    unknown: number;
+  };
+}
+
+export interface RiskBreakdownResponse {
+  transaction_id: number;
+  risk_score: number;
+  risk_level: RiskLevel;
+  breakdown: {
+    final_score: number;
+    risk_level: RiskLevel;
+    ml_probability: number;
+    ml_points: number;
+    graph_points: number;
+    topology_points: number;
+    feature_points: number;
+    trigger_reasons: string[];
+    scoring_standard: string;
+    legal_disclaimer: string;
+  };
 }

@@ -14,7 +14,10 @@ class Settings(BaseSettings):
     APP_NAME: str = "TRACE-X Forensic Intelligence Platform"
     APP_VERSION: str = "1.0.0"
     ENVIRONMENT: str = "development"
-    DEBUG: bool = True
+    DEBUG: bool = Field(default=False, env="DEBUG")
+
+    # Optional Admin Key (if set in hosted deployments, required via X-Admin-Key for /api/ml/train and /api/dataset/ingest)
+    ADMIN_API_KEY: str = Field(default="", env="ADMIN_API_KEY")
 
     # Supabase PostgreSQL
     SUPABASE_URL: str = Field(default="", env="SUPABASE_URL")
@@ -24,7 +27,7 @@ class Settings(BaseSettings):
 
     # Dataset directory
     DATASET_PATH: str = Field(
-        default=r"D:\archive (1)\elliptic_bitcoin_dataset",
+        default="data/elliptic_bitcoin_dataset",
         env="DATASET_PATH"
     )
 

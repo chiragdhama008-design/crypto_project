@@ -2,37 +2,43 @@ import {
   DashboardOverview,
   PaginatedTransactionsResponse,
   TransactionSummary,
+  HighRiskQueueResponse,
   CategorizedFeaturesResponse,
   TransactionIntelligenceResponse,
   TransactionEvidenceResponse,
   GraphResponse,
   InvestigationCase,
   ModelMetrics,
-  SystemHealth
+  SystemHealth,
+  ModelSummary,
+  DatasetStatus,
+  RiskBreakdownResponse,
 } from '../types/api';
 
 const rawApiUrl = import.meta.env.VITE_API_URL;
 const normalizedBase = rawApiUrl ? (rawApiUrl.startsWith('http') ? rawApiUrl : `https://${rawApiUrl}`) : '';
-const API_BASE = normalizedBase ? `${normalizedBase}/api` : '/api';
+const API_BASE = normalizedBase ? `${normalizedBase.replace(/\/$/, '')}/api` : '/api';
 
 async function fetchJson<T>(url: string, options?: RequestInit): Promise<T> {
   const res = await fetch(url, {
+    ...options,
     headers: {
       'Content-Type': 'application/json',
       ...options?.headers,
     },
-    ...options,
   });
 
   if (!res.ok) {
     let errorDetail = res.statusText;
     try {
       const errJson = await res.json();
-      errorDetail = errJson.detail || errJson.error || errorDetail;
+      const detail = errJson.detail || errJson.error;
+      if (typeof detail === 'string') errorDetail = detail;
+      else if (Array.isArray(detail)) errorDetail = detail.map((item: { msg?: string }) => item.msg || 'Invalid value').join('. ');
     } catch {
       // fallback to statusText
     }
-    throw new Error(errorDetail);
+    throw new Error(errorDetail || `Request failed (${res.status})`);
   }
 
   return res.json();
@@ -77,9 +83,9 @@ export const api = {
   getTransactionEvidence: (id: number) =>
     fetchJson<TransactionEvidenceResponse>(`${API_BASE}/transactions/${id}/evidence`),
 
-  searchTransactions: (query: string) =>
-    fetchJson<Array<{ transaction_id: number; time_step: number; known_label: string; risk_score: number }>>(
-      `${API_BASE}/search/transactions?query=${encodeURIComponent(query)}`
+  searchTransactions: (query: string, signal?: AbortSignal) =>
+    fetchJson<Array<{ transaction_id: number; time_step: number; known_label: string; prediction: string | null; risk_score: number | null; risk_level: string | null }>>(
+      `${API_BASE}/search/transactions?query=${encodeURIComponent(query.trim())}`, { signal }
     ),
 
   // Graph
@@ -93,36 +99,35 @@ export const api = {
     if (params?.time_step) sp.set('time_step', params.time_step.toString());
     if (params?.limit) sp.set('limit', params.limit.toString());
     if (params?.page) sp.set('page', params.page.toString());
-    return fetchJson<{
-      total: number;
-      page: number;
-      limit: number;
-      critical_count: number;
-      high_count: number;
-      medium_count: number;
-      low_count: number;
-      transactions: any[];
-    }>(`${API_BASE}/risk/high?${sp.toString()}`);
+    return fetchJson<HighRiskQueueResponse>(`${API_BASE}/risk/high?${sp.toString()}`);
   },
 
-  getRiskBreakdown: (id: number) => fetchJson<any>(`${API_BASE}/risk/${id}`),
+  getRiskBreakdown: (id: number) => fetchJson<RiskBreakdownResponse>(`${API_BASE}/risk/${id}`),
 
   // Models
-  listModels: () => fetchJson<{ active_model: string; supported_architectures: string[]; models: any[] }>(`${API_BASE}/models`),
+  listModels: () => fetchJson<{ active_model: string; supported_architectures: string[]; models: ModelSummary[] }>(`${API_BASE}/models`),
 
-  getModelMetrics: (modelName: string) => fetchJson<ModelMetrics>(`${API_BASE}/models/${modelName}/metrics`),
+  getModelMetrics: (modelName: string) => {
+    const metricNames: Record<string, string> = {
+      gradient_boosting: 'Gradient Boosting',
+      random_forest: 'Random Forest',
+      logistic_regression: 'Logistic Regression',
+      gnn: 'gnn',
+    };
+    return fetchJson<ModelMetrics>(`${API_BASE}/models/${encodeURIComponent(metricNames[modelName] || modelName)}/metrics`);
+  },
 
   getUnseenBenchmark: (modelName?: string) =>
-    fetchJson<any>(`${API_BASE}/models/unseen-benchmark?model_name=${modelName || 'gradient_boosting'}`),
+    fetchJson<any>(`${API_BASE}/models/unseen-benchmark?model_name=${encodeURIComponent(modelName || 'gradient_boosting')}`),
 
   // Analytics
   getAnalyticsOverview: () => fetchJson<any>(`${API_BASE}/analytics/overview`),
   getTimeSeries: () => fetchJson<any[]>(`${API_BASE}/analytics/time-series`),
 
   // Cases
-  getCases: () => fetchJson<InvestigationCase[]>(`${API_BASE}/cases`),
+  getCases: (signal?: AbortSignal) => fetchJson<InvestigationCase[]>(`${API_BASE}/cases`, { signal }),
 
-  getCase: (id: number) => fetchJson<InvestigationCase>(`${API_BASE}/cases/${id}`),
+  getCase: (id: number, signal?: AbortSignal) => fetchJson<InvestigationCase>(`${API_BASE}/cases/${id}`, { signal }),
 
   createCase: (data: { case_name: string; description?: string; initial_transactions?: number[] }) =>
     fetchJson<InvestigationCase>(`${API_BASE}/cases`, {
@@ -149,8 +154,8 @@ export const api = {
     }),
 
   // Reports
-  getCaseReport: (caseId: number) => fetchJson<any>(`${API_BASE}/cases/${caseId}/report`),
+  getCaseReport: (caseId: number, signal?: AbortSignal) => fetchJson<any>(`${API_BASE}/cases/${caseId}/report`, { signal }),
 
   // Dataset
-  getDatasetStatus: () => fetchJson<any>(`${API_BASE}/dataset/status`),
+  getDatasetStatus: () => fetchJson<DatasetStatus>(`${API_BASE}/dataset/status`),
 };

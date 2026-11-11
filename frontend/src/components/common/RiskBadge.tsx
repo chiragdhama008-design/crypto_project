@@ -8,11 +8,14 @@ interface RiskBadgeProps {
 }
 
 export const RiskBadge: React.FC<RiskBadgeProps> = ({ score, level, showScore = true }) => {
-  const normLevel = (level || 'LOW').toUpperCase();
+  if (!level && (score === null || score === undefined)) {
+    return <span className="badge-pill badge-unknown">Not scored</span>;
+  }
+  const normLevel = (level || (score! >= 81 ? 'CRITICAL' : score! >= 61 ? 'HIGH' : score! >= 31 ? 'MEDIUM' : 'LOW')).toUpperCase();
 
-  let badgeClass = 'badge-easy';
+  let badgeClass = 'badge-low';
   if (normLevel === 'CRITICAL') {
-    badgeClass = 'badge-hard';
+    badgeClass = 'badge-critical';
   } else if (normLevel === 'HIGH') {
     badgeClass = 'badge-high';
   } else if (normLevel === 'MEDIUM') {
@@ -20,10 +23,11 @@ export const RiskBadge: React.FC<RiskBadgeProps> = ({ score, level, showScore = 
   }
 
   return (
-    <span className={`${badgeClass} space-x-1`}>
-      <span className="font-mono text-[11px]">{normLevel}</span>
+    <span className={`badge-pill ${badgeClass} tabular-nums`}>
+      <span className="status-dot" aria-hidden="true" />
+      <span>{normLevel.charAt(0) + normLevel.slice(1).toLowerCase()}</span>
       {showScore && score !== undefined && score !== null && (
-        <span className="font-mono opacity-85 text-[10px]">({score})</span>
+        <span className="opacity-80">{score}</span>
       )}
     </span>
   );

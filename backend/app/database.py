@@ -4,17 +4,19 @@ Handles database connections, schema execution, connection pooling, and client w
 """
 
 import os
-from typing import Optional, Generator, Dict, Any
+from typing import Optional, Generator, Dict, Any, TYPE_CHECKING
 from sqlalchemy import create_engine, text
 from sqlalchemy.orm import sessionmaker, declarative_base, Session
-from supabase import create_client, Client
 from backend.app.config import settings
+
+if TYPE_CHECKING:
+    from supabase import Client
 
 Base = declarative_base()
 
 _engine = None
 _SessionLocal = None
-_supabase_client: Optional[Client] = None
+_supabase_client: Optional[Any] = None
 _db_status = {
     "connected": False,
     "provider": "None",
@@ -23,7 +25,7 @@ _db_status = {
 }
 
 
-def get_supabase_client() -> Optional[Client]:
+def get_supabase_client() -> Optional["Client"]:
     """Initializes and returns the Supabase client if credentials exist."""
     global _supabase_client
     if _supabase_client is not None:
@@ -31,6 +33,7 @@ def get_supabase_client() -> Optional[Client]:
 
     if settings.has_supabase_api:
         try:
+            from supabase import create_client
             key = settings.SUPABASE_SERVICE_ROLE_KEY or settings.SUPABASE_ANON_KEY
             _supabase_client = create_client(settings.SUPABASE_URL, key)
             return _supabase_client
@@ -162,7 +165,8 @@ def _create_sqlite_dev_tables():
         id INTEGER PRIMARY KEY AUTOINCREMENT,
         source_transaction_id INTEGER NOT NULL,
         destination_transaction_id INTEGER NOT NULL,
-        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+        UNIQUE (source_transaction_id, destination_transaction_id)
     );
     CREATE TABLE IF NOT EXISTS model_predictions (
         id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -199,7 +203,8 @@ def _create_sqlite_dev_tables():
         case_id INTEGER NOT NULL,
         transaction_id INTEGER NOT NULL,
         notes TEXT,
-        added_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+        added_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+        UNIQUE (case_id, transaction_id)
     );
     CREATE TABLE IF NOT EXISTS investigation_notes (
         id INTEGER PRIMARY KEY AUTOINCREMENT,

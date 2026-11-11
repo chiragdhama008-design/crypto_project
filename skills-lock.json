@@ -1,0 +1,23 @@
+{
+  "version": 1,
+  "skills": {
+    "design-review": {
+      "source": "jezweb/claude-skills",
+      "sourceType": "github",
+      "skillPath": "plugins/frontend/skills/design-review/SKILL.md",
+      "computedHash": "401194389fa8c31fe777420487cf529336e14cd2e76c436233d67e9cb6244d69"
+    },
+    "design-taste-frontend": {
+      "source": "Leonxlnx/taste-skill",
+      "sourceType": "github",
+      "skillPath": "skills/taste-skill/SKILL.md",
+      "computedHash": "974e1bb8cf7c78d3a63f1456d54a97119c03e7ab8bf374e04ade800892326ec7"
+    },
+    "ux-audit": {
+      "source": "jezweb/claude-skills",
+      "sourceType": "github",
+      "skillPath": "plugins/dev-tools/skills/ux-audit/SKILL.md",
+      "computedHash": "19ea952f10b9b7d9ba8eda02761dab80aa8c8f91cdb6b241a14610ae59497ae2"
+    }
+  }
+}

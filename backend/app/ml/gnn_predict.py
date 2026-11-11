@@ -1,16 +1,16 @@
 """
 GNN Inference and Checkpoint Loading Engine for TRACE-X.
-Supports graph-aware inference for transactions using neighborhood message passing.
+Supports graph-aware inference for transactions using 2-hop undirected neighborhood message passing.
 """
 
+import json
 from pathlib import Path
-from typing import Optional, Tuple, Dict, Any, List, Union
+from typing import Optional, Tuple, Dict, Any, List
 import joblib
 import numpy as np
 import torch
 import torch.nn.functional as F
-from torch_geometric.data import Data
-from torch_geometric.utils import k_hop_subgraph
+from torch_geometric.utils import to_undirected
 
 from backend.app.ml.gnn_model import BitcoinGraphSAGE
 
@@ -20,7 +20,7 @@ _gnn_metadata: Optional[Dict[str, Any]] = None
 
 
 def load_gnn_model() -> Optional[BitcoinGraphSAGE]:
-    """Loads and caches the trained BitcoinGraphSAGE model checkpoint."""
+    """Loads and caches the trained BitcoinGraphSAGE model checkpoint safely."""
     global _gnn_model
     if _gnn_model is not None:
         return _gnn_model
@@ -30,7 +30,7 @@ def load_gnn_model() -> Optional[BitcoinGraphSAGE]:
         return None
 
     try:
-        checkpoint = torch.load(ckpt_path, map_location="cpu", weights_only=False)
+        checkpoint = torch.load(ckpt_path, map_location="cpu", weights_only=True)
         in_channels = checkpoint.get("in_channels", 165)
         hidden_channels = checkpoint.get("hidden_channels", 128)
         out_channels = checkpoint.get("out_channels", 2)
@@ -90,22 +90,24 @@ def predict_gnn_with_subgraph(
     """
     model = load_gnn_model()
     if model is None:
-        # Fallback if checkpoint not yet generated
-        prob = float(np.clip(np.mean(np.abs(center_features) > 2.5) * 0.7 + 0.05, 0.01, 0.95))
-        return ("ILLICIT" if prob >= 0.5 else "LICIT"), prob
+        raise FileNotFoundError("Trained GNN checkpoint models/gnn_model.pt not found.")
 
-    # Combine all node features in the neighborhood
-    all_features = [center_features] + neighbor_features if center_idx == 0 else neighbor_features
+    if center_idx < 0 or center_idx > len(neighbor_features):
+        raise ValueError(f"center_idx ({center_idx}) out of bounds for {len(neighbor_features)} neighbor nodes.")
+
+    # Insert center_features at center_idx cleanly without dropping center_features when center_idx != 0
+    all_features = list(neighbor_features)
+    all_features.insert(center_idx, center_features)
+    num_nodes = len(all_features)
     x = torch.tensor(all_features, dtype=torch.float32)
 
-    # If no edges in neighborhood, add self-loop so message passing doesn't degenerate
+    # Deduplicate undirected edges to stay consistent with gnn_train.py (to_undirected)
     if not edges:
         edge_index = torch.tensor([[center_idx], [center_idx]], dtype=torch.long)
     else:
         src = [e[0] for e in edges]
         dst = [e[1] for e in edges]
-        # Include reverse edges for bidirectional money flow context
-        edge_index = torch.tensor([src + dst, dst + src], dtype=torch.long)
+        edge_index = to_undirected(torch.tensor([src, dst], dtype=torch.long), num_nodes=num_nodes)
 
     model.eval()
     with torch.no_grad():
@@ -120,70 +122,88 @@ def predict_gnn_with_subgraph(
 def predict_gnn_transaction(
     transaction_id: Optional[int] = None,
     features: Optional[List[float]] = None,
-    db_session: Any = None
+    db_session: Any = None,
+    max_subgraph_nodes: int = 150
 ) -> Tuple[str, float, Dict[str, Any]]:
     """
     Main entry point for GNN transaction prediction.
-    If transaction_id is provided and present in DB, extracts its real graph neighborhood
-    for genuine graph message passing.
+    If transaction_id is provided and present in DB, extracts a bounded 2-hop graph neighborhood
+    (matching the 2-layer BitcoinGraphSAGE receptive field and deduplicated undirected edges).
 
     Returns:
         (prediction, illicit_probability, details_dict)
     """
     model = load_gnn_model()
     if model is None:
-        # Fallback
-        feat_arr = np.array(features or [0.0] * 165, dtype=float)
-        prob = float(np.clip(0.05 + np.mean(np.abs(feat_arr) > 2.5) * 0.7, 0.01, 0.95))
-        return ("ILLICIT" if prob >= 0.5 else "LICIT"), prob, {"mode": "fallback_no_checkpoint"}
+        raise FileNotFoundError("Trained GNN checkpoint models/gnn_model.pt not found.")
 
-    # Case 1: Transaction in DB -> extract neighborhood graph context
+    # Case 1: Transaction in DB -> extract bounded 2-hop neighborhood graph context
     if transaction_id is not None and db_session is not None:
-        from backend.app.models import Transaction, TransactionEdge, TransactionFeature
+        from backend.app.models import TransactionEdge, TransactionFeature
 
-        # 1. Fetch 1-hop incoming and outgoing edges
-        out_edges = db_session.query(
-            TransactionEdge.source_transaction_id,
-            TransactionEdge.destination_transaction_id
-        ).filter(TransactionEdge.source_transaction_id == transaction_id).all()
+        visited_ids = {transaction_id}
+        ordered_neighbors: List[int] = []
+        frontier = {transaction_id}
+        raw_edges: set = set()
 
-        in_edges = db_session.query(
-            TransactionEdge.source_transaction_id,
-            TransactionEdge.destination_transaction_id
-        ).filter(TransactionEdge.destination_transaction_id == transaction_id).all()
+        for _hop in range(2):
+            if not frontier or len(visited_ids) >= max_subgraph_nodes:
+                break
+            frontier_list = list(frontier)
 
-        neighbor_ids = list(set([e[1] for e in out_edges] + [e[0] for e in in_edges]))
-        node_ids = [transaction_id] + neighbor_ids
+            out_edges = db_session.query(
+                TransactionEdge.source_transaction_id,
+                TransactionEdge.destination_transaction_id
+            ).filter(
+                TransactionEdge.source_transaction_id.in_(frontier_list)
+            ).order_by(TransactionEdge.id.asc()).limit(max_subgraph_nodes).all()
+
+            in_edges = db_session.query(
+                TransactionEdge.source_transaction_id,
+                TransactionEdge.destination_transaction_id
+            ).filter(
+                TransactionEdge.destination_transaction_id.in_(frontier_list)
+            ).order_by(TransactionEdge.id.asc()).limit(max_subgraph_nodes).all()
+
+            next_frontier = set()
+            for src, dst in out_edges + in_edges:
+                raw_edges.add((src, dst))
+                for candidate in (src, dst):
+                    if candidate not in visited_ids and len(visited_ids) < max_subgraph_nodes:
+                        visited_ids.add(candidate)
+                        ordered_neighbors.append(candidate)
+                        next_frontier.add(candidate)
+            frontier = next_frontier
+
+        node_ids = [transaction_id] + ordered_neighbors
         node_map = {nid: i for i, nid in enumerate(node_ids)}
 
-        # Fetch features for all nodes
+        # Fetch features for all visited nodes in subgraph
         feature_rows = db_session.query(TransactionFeature).filter(
             TransactionFeature.transaction_id.in_(node_ids)
         ).all()
         feat_map = {}
         for r in feature_rows:
             try:
-                import json
                 parsed = json.loads(r.features) if isinstance(r.features, str) else r.features
-                feat_map[r.transaction_id] = parsed
+                if isinstance(parsed, list) and len(parsed) == 165:
+                    feat_map[r.transaction_id] = parsed
             except Exception:
                 pass
 
-        # If center features were supplied or found
         center_f = features if (features and len(features) == 165) else feat_map.get(transaction_id)
         if center_f is None:
             center_f = [0.0] * 165
 
         node_features = [center_f]
-        for nid in neighbor_ids:
-            nf = feat_map.get(nid, [0.0] * 165)
-            node_features.append(nf)
+        for nid in ordered_neighbors:
+            node_features.append(feat_map.get(nid, [0.0] * 165))
 
-        # Build local edges
-        local_edges = []
-        for src, dst in out_edges + in_edges:
-            if src in node_map and dst in node_map:
-                local_edges.append((node_map[src], node_map[dst]))
+        local_edges = [
+            (node_map[src], node_map[dst])
+            for (src, dst) in raw_edges
+            if src in node_map and dst in node_map
+        ]
 
         x = torch.tensor(node_features, dtype=torch.float32)
         if not local_edges:
@@ -191,8 +211,10 @@ def predict_gnn_transaction(
         else:
             src_list = [e[0] for e in local_edges]
             dst_list = [e[1] for e in local_edges]
-            # Bidirectional message passing
-            edge_index = torch.tensor([src_list + dst_list, dst_list + src_list], dtype=torch.long)
+            edge_index = to_undirected(
+                torch.tensor([src_list, dst_list], dtype=torch.long),
+                num_nodes=len(node_ids)
+            )
 
         model.eval()
         with torch.no_grad():
@@ -202,15 +224,14 @@ def predict_gnn_transaction(
             pred = "ILLICIT" if illicit_prob >= 0.5 else "LICIT"
 
         return pred, illicit_prob, {
-            "mode": "graph_subgraph",
+            "mode": "graph_subgraph_2hop",
             "nodes_in_subgraph": len(node_ids),
-            "edges_in_subgraph": len(local_edges),
-            "neighbor_count": len(neighbor_ids)
+            "edges_in_subgraph": int(edge_index.size(1)),
+            "neighbor_count": len(ordered_neighbors)
         }
 
     # Case 2: Only 165-feature vector provided without graph context
     if features and len(features) == 165:
-        # Isolated node inference: self-loop message passing
         x = torch.tensor([features], dtype=torch.float32)
         edge_index = torch.tensor([[0], [0]], dtype=torch.long)
         model.eval()

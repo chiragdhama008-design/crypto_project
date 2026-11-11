@@ -15,7 +15,7 @@ Scoring Formula:
    - Extreme z-score deviations in transaction features: up to +10 pts
 5. Override:
    - If known_label == 'ILLICIT': Minimum risk score = 90
-   - If known_label == 'LICIT' and ml_prob < 0.1 and no illicit neighbors: Max risk score = 25
+   - If known_label == 'LICIT' and ml_prob < 0.2 and no illicit neighbors: Max risk score = 25
 
 Risk Levels:
 - 0 to 30: LOW

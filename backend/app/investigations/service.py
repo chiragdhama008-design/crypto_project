@@ -58,9 +58,11 @@ class InvestigationService:
         # Get transactions in case with their metadata
         case_txs = db.query(CaseTransaction).filter(CaseTransaction.case_id == case_id).all()
         tx_ids = [ct.transaction_id for ct in case_txs]
-        
-        tx_meta_records = db.query(Transaction).filter(Transaction.transaction_id.in_(tx_ids)).all()
-        meta_map = {t.transaction_id: t for t in tx_meta_records}
+
+        meta_map = {}
+        if tx_ids:
+            tx_meta_records = db.query(Transaction).filter(Transaction.transaction_id.in_(tx_ids)).all()
+            meta_map = {t.transaction_id: t for t in tx_meta_records}
 
         transactions_data = []
         for ct in case_txs:
@@ -118,7 +120,11 @@ class InvestigationService:
         return InvestigationService.get_case_detail(db, case_id)
 
     @staticmethod
-    def add_transactions_to_case(db: Session, case_id: int, transaction_ids: List[int], notes: Optional[str] = None) -> Dict[str, Any]:
+    def add_transactions_to_case(db: Session, case_id: int, transaction_ids: List[int], notes: Optional[str] = None) -> Optional[Dict[str, Any]]:
+        case = db.query(InvestigationCase).filter(InvestigationCase.id == case_id).first()
+        if not case:
+            return None
+
         for tx_id in transaction_ids:
             existing = db.query(CaseTransaction).filter(
                 CaseTransaction.case_id == case_id,
@@ -132,15 +138,16 @@ class InvestigationService:
                     added_at=datetime.utcnow()
                 )
                 db.add(ct)
-        # Update case timestamp
-        case = db.query(InvestigationCase).filter(InvestigationCase.id == case_id).first()
-        if case:
-            case.updated_at = datetime.utcnow()
+        case.updated_at = datetime.utcnow()
         db.commit()
         return InvestigationService.get_case_detail(db, case_id)
 
     @staticmethod
-    def add_note_to_case(db: Session, case_id: int, note: str, transaction_id: Optional[int] = None, author: str = "Investigator") -> Dict[str, Any]:
+    def add_note_to_case(db: Session, case_id: int, note: str, transaction_id: Optional[int] = None, author: str = "Investigator") -> Optional[Dict[str, Any]]:
+        case = db.query(InvestigationCase).filter(InvestigationCase.id == case_id).first()
+        if not case:
+            return None
+
         new_note = InvestigationNote(
             case_id=case_id,
             transaction_id=transaction_id,
@@ -149,9 +156,7 @@ class InvestigationService:
             created_at=datetime.utcnow()
         )
         db.add(new_note)
-        case = db.query(InvestigationCase).filter(InvestigationCase.id == case_id).first()
-        if case:
-            case.updated_at = datetime.utcnow()
+        case.updated_at = datetime.utcnow()
         db.commit()
         db.refresh(new_note)
         return {

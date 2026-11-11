@@ -4,9 +4,12 @@ Aggregates case transactions, graph propagation evidence, ML risk indicators,
 and produces comprehensive, case-ready intelligence reports.
 """
 
+import hashlib
+import json
 from typing import Dict, Any, Optional
-from datetime import datetime
+from datetime import datetime, timezone
 from sqlalchemy.orm import Session
+from backend.app.config import settings
 from backend.app.investigations.service import InvestigationService
 from backend.app.models import Transaction, TransactionEdge
 
@@ -29,13 +32,15 @@ class ReportGenerator:
         avg_risk = sum((t["risk_score"] or 0) for t in tx_list) / max(len(tx_list), 1)
 
         # Graph connectivity within case
-        internal_edges = db.query(
-            TransactionEdge.source_transaction_id,
-            TransactionEdge.destination_transaction_id
-        ).filter(
-            TransactionEdge.source_transaction_id.in_(tx_ids),
-            TransactionEdge.destination_transaction_id.in_(tx_ids)
-        ).all()
+        internal_edges = []
+        if tx_ids:
+            internal_edges = db.query(
+                TransactionEdge.source_transaction_id,
+                TransactionEdge.destination_transaction_id
+            ).filter(
+                TransactionEdge.source_transaction_id.in_(tx_ids),
+                TransactionEdge.destination_transaction_id.in_(tx_ids)
+            ).all()
 
         evidence_items = []
         for t in tx_list:
@@ -51,15 +56,18 @@ class ReportGenerator:
                     "transaction_id": t["transaction_id"],
                     "type": "MODEL_ANOMALY_DETECTION",
                     "severity": "HIGH",
-                    "detail": f"Classified illicit by predictive baseline model with risk score {t['risk_score']}."
+                    "detail": f"Classified illicit by predictive model with risk score {t['risk_score']}."
                 })
+
+        generated_at = datetime.now(timezone.utc)
+        active_model_label = settings.ACTIVE_MODEL.replace("_", " ").title()
 
         report = {
             "case_id": case_data["id"],
             "case_name": case_data["case_name"],
             "status": case_data["status"],
             "created_at": case_data["created_at"],
-            "generated_at": datetime.utcnow(),
+            "generated_at": generated_at,
             "investigator": "Forensic Intelligence Unit / TRACE-X System",
             "executive_summary": (
                 f"Forensic investigation dossier for Case #{case_data['id']}: '{case_data['case_name']}'. "
@@ -85,7 +93,7 @@ class ReportGenerator:
                 )
             },
             "model_findings": {
-                "active_model": "Gradient Boosting / Random Forest Baseline",
+                "active_model": active_model_label,
                 "classification_focus": "Minority Illicit Class Anomaly Detection",
                 "detection_threshold": 0.50
             },
@@ -97,5 +105,21 @@ class ReportGenerator:
                 "These signals do not constitute legally definitive proof of criminal activity without corroborated off-chain evidence."
             )
         }
+
+        canonical_payload = json.dumps(
+            {
+                "case_id": report["case_id"],
+                "status": report["status"],
+                "generated_at": generated_at.isoformat(),
+                "risk_assessment_summary": report["risk_assessment_summary"],
+                "investigated_transactions": report["investigated_transactions"],
+                "network_findings": report["network_findings"],
+                "evidence_items": report["evidence_items"],
+                "forensic_notes": report["forensic_notes"],
+            },
+            sort_keys=True,
+            default=str,
+        )
+        report["integrity_sha256"] = hashlib.sha256(canonical_payload.encode("utf-8")).hexdigest()
 
         return report
