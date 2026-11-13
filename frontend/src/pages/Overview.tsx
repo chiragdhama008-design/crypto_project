@@ -22,11 +22,12 @@ export function Overview() {
   const { data, index, queue, model } = snapshot;
   const error = loading ? null : snapshot.error;
   const [illicitOnly, setIllicitOnly] = useState(false);
+  const [hopDepth, setHopDepth] = useState<1 | 2>(1);
   const { motionEnabled } = useMotion();
 
   useEffect(() => {
     let active = true;
-    Promise.allSettled([api.getDashboard(), api.getDatasetStatus(), api.getHighRiskQueue({ limit: 5 }), api.listModels()]).then(([dashboardResult, indexResult, queueResult, modelsResult]) => {
+    Promise.allSettled([api.getDashboard(), api.getDatasetStatus(), api.getHighRiskQueue({ limit: 10 }), api.listModels()]).then(([dashboardResult, indexResult, queueResult, modelsResult]) => {
       if (!active) return;
       const models = modelsResult.status === 'fulfilled' ? modelsResult.value.models : [];
       setSnapshot({ revision, data: dashboardResult.status === 'fulfilled' ? dashboardResult.value : null, error: dashboardResult.status === 'rejected' ? dashboardResult.reason?.message || 'The dashboard could not be loaded.' : null, index: indexResult.status === 'fulfilled' ? indexResult.value : null, queue: queueResult.status === 'fulfilled' ? queueResult.value : null, model: models.find((item) => item.is_active) || null });
@@ -110,10 +111,118 @@ export function Overview() {
       </div>
     </section>
 
-    <section className="overview-grid" aria-label="Scored transactions and model evaluation">
+    <section className="overview-grid" aria-label="High-risk transactions and model evaluation">
       <div className="panel-surface overflow-hidden">
-        <div className="section-bar border-b border-line"><div><h2 className="section-heading">Scored transactions</h2><p className="section-description">Highest stored risk scores in your index</p></div><Link to="/risk" className="text-link">View queue<ArrowRight size={13} /></Link></div>
-        {queue === null ? <EmptyState tone="error" title="Queue unavailable" description="The risk service could not be reached. Refresh the overview to retry." /> : queue.transactions.length === 0 ? <EmptyState icon={ShieldCheck} title="No scored transactions yet" description="When indexed transactions have risk scores, your highest-priority records will appear here." actionLabel="Review dataset" onAction={() => navigate('/dataset')} /> : <div className="overflow-x-auto"><table className="tx-table"><thead><tr><th>Transaction</th><th>Ground truth</th><th>Risk</th><th>Inspect</th></tr></thead><tbody>{queue.transactions.map((tx) => <tr key={tx.transaction_id}><td className="font-mono text-xs">#{tx.transaction_id}</td><td><LabelBadge label={tx.known_label} /></td><td><RiskBadge level={tx.risk_level} score={tx.risk_score} /></td><td><Link to={`/transactions/${tx.transaction_id}`} className="text-link" aria-label={`Inspect transaction ${tx.transaction_id}`}><ArrowUpRight size={16} /></Link></td></tr>)}</tbody></table></div>}
+        <div className="section-bar border-b border-line flex-wrap gap-3">
+          <div>
+            <h2 className="section-heading">High-Risk Transactions</h2>
+            <p className="section-description">High-priority targets. Choose hop depth and click Investigate to trace flow in Graph Explorer.</p>
+          </div>
+          <div className="flex items-center gap-3">
+            <div className="flex items-center gap-1.5 text-xs text-ink-muted">
+              <span>Flow depth:</span>
+              <div className="segmented-control" role="group" aria-label="Investigation hop depth">
+                <button
+                  type="button"
+                  aria-pressed={hopDepth === 1}
+                  onClick={() => setHopDepth(1)}
+                  title="Explore 1-hop direct flow"
+                >
+                  1 Hop
+                </button>
+                <button
+                  type="button"
+                  aria-pressed={hopDepth === 2}
+                  onClick={() => setHopDepth(2)}
+                  title="Explore 2-hop expanded flow"
+                >
+                  2 Hops
+                </button>
+              </div>
+            </div>
+            <Link to="/risk" className="text-link">View queue<ArrowRight size={13} /></Link>
+          </div>
+        </div>
+        {queue === null && (!data.high_risk_preview || data.high_risk_preview.length === 0) ? (
+          <EmptyState tone="error" title="Queue unavailable" description="The risk service could not be reached. Refresh the overview to retry." />
+        ) : ((queue?.transactions?.length ?? 0) === 0 && (!data.high_risk_preview || data.high_risk_preview.length === 0)) ? (
+          <EmptyState icon={ShieldCheck} title="No scored transactions yet" description="When indexed transactions have risk scores, your highest-priority records will appear here." actionLabel="Review dataset" onAction={() => navigate('/dataset')} />
+        ) : (
+          <div className="overflow-x-auto">
+            <table className="tx-table">
+              <thead>
+                <tr>
+                  <th>Transaction ID</th>
+                  <th>Ground truth</th>
+                  <th>Risk Score</th>
+                  <th>Flows</th>
+                  <th>Investigate ({hopDepth} Hop{hopDepth > 1 ? 's' : ''})</th>
+                </tr>
+              </thead>
+              <tbody>
+                {((queue?.transactions && queue.transactions.length > 0) ? queue.transactions : (data.high_risk_preview || [])).map((tx) => (
+                  <tr key={tx.transaction_id}>
+                    <td>
+                      <Link
+                        to={`/transactions/${tx.transaction_id}`}
+                        className="font-mono text-xs font-semibold text-accent hover:underline inline-flex items-center gap-1"
+                        title="View transaction dossier"
+                      >
+                        #{tx.transaction_id}
+                      </Link>
+                    </td>
+                    <td><LabelBadge label={tx.known_label} /></td>
+                    <td><RiskBadge level={tx.risk_level} score={tx.risk_score} /></td>
+                    <td className="text-xs tabular-nums text-ink-muted">
+                      {tx.total_degree ?? ((tx.in_degree || 0) + (tx.out_degree || 0))} flows
+                    </td>
+                    <td>
+                      <div className="flex items-center gap-2">
+                        <button
+                          type="button"
+                          className="btn-primary py-1 px-3 text-xs inline-flex items-center gap-1.5"
+                          onClick={() => navigate(`/graph?tx=${tx.transaction_id}&depth=${hopDepth}`)}
+                          title={`Investigate ${hopDepth}-hop transaction flow in Graph Explorer`}
+                        >
+                          <Network size={13} />
+                          Investigate
+                        </button>
+                        <div className="segmented-control scale-90 origin-left" role="group" aria-label="Hop depth shortcuts">
+                          <button
+                            type="button"
+                            aria-pressed={hopDepth === 1}
+                            onClick={() => navigate(`/graph?tx=${tx.transaction_id}&depth=1`)}
+                            className="px-2 py-0.5 text-[11px]"
+                            title="Open 1-hop flow in Graph Explorer"
+                          >
+                            1h
+                          </button>
+                          <button
+                            type="button"
+                            aria-pressed={hopDepth === 2}
+                            onClick={() => navigate(`/graph?tx=${tx.transaction_id}&depth=2`)}
+                            className="px-2 py-0.5 text-[11px]"
+                            title="Open 2-hop flow in Graph Explorer"
+                          >
+                            2h
+                          </button>
+                        </div>
+                        <Link
+                          to={`/transactions/${tx.transaction_id}`}
+                          className="icon-button"
+                          title="View transaction dossier"
+                          aria-label={`View dossier for ${tx.transaction_id}`}
+                        >
+                          <ArrowUpRight size={15} />
+                        </Link>
+                      </div>
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        )}
       </div>
       <div className="panel-surface model-summary">
         <div className="flex items-center justify-between"><span className="badge-pill badge-unknown">Historical evaluation</span><Cpu size={19} className="text-accent" /></div>

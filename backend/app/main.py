@@ -39,6 +39,13 @@ async def lifespan(app: FastAPI):
     print("=" * 60)
     # Initialize database connection and schemas
     init_db()
+    try:
+        from backend.app.database import get_db
+        from backend.app.data_sources.seed_demo import seed_demo_transactions_if_empty
+        db = next(get_db())
+        seed_demo_transactions_if_empty(db)
+    except Exception as e:
+        logger.warning("Could not auto-seed demo transactions: %s", e)
     yield
     print("[TRACE-X] Backend shutdown cleanly.")
 
