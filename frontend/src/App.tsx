@@ -22,7 +22,7 @@ const Methodology = lazy(() => import('./pages/Methodology').then((module) => ({
 function Workspace() {
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
   const [sidebarCollapsed, setSidebarCollapsed] = useState(() => {
-    try { return localStorage.getItem('tracex-sidebar') === 'collapsed'; } catch { return false; }
+    try { return (localStorage.getItem('chainguard-sidebar') || localStorage.getItem('tracex-sidebar')) === 'collapsed'; } catch { return false; }
   });
   const [health, setHealth] = useState<SystemHealth | null>(null);
   const location = useLocation();
@@ -44,7 +44,7 @@ function Workspace() {
   function toggleSidebar() {
     const next = !sidebarCollapsed;
     setSidebarCollapsed(next);
-    try { localStorage.setItem('tracex-sidebar', next ? 'collapsed' : 'expanded'); } catch { /* Storage is optional. */ }
+    try { localStorage.setItem('chainguard-sidebar', next ? 'collapsed' : 'expanded'); } catch { /* Storage is optional. */ }
   }
 
   return (

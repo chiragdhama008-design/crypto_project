@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-TRACE-X Forensic Platform
+ChainGuard Forensic Platform
 Elliptic Dataset Inspection Script
 Reports comprehensive statistics, class distribution, temporal properties, and graph properties.
 """
@@ -15,7 +15,7 @@ import numpy as np
 def inspect_dataset(dataset_dir: str):
     dir_path = Path(dataset_dir)
     print("=" * 70)
-    print("TRACE-X FORENSIC PLATFORM - ELLIPTIC DATASET INSPECTION")
+    print("CHAINGUARD FORENSIC PLATFORM - ELLIPTIC DATASET INSPECTION")
     print("=" * 70)
     print(f"Target Directory: {dir_path.resolve()}")
 

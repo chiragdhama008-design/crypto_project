@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-TRACE-X Forensic Platform
+ChainGuard Forensic Platform
 High-Performance Dataset Ingestion & ML Pipeline.
 Streams, normalizes, predicts, scores, and bulk-inserts Elliptic Bitcoin transactions, edges, and features.
 Supports both Supabase PostgreSQL and local SQLite storage using batched bulk inserts.
@@ -31,7 +31,7 @@ from backend.app.risk.engine import calculate_risk_score
 def run_ingestion(data_dir: str, limit: int = None, edges_limit: int = None, batch_size: int = 10000, clear: bool = True):
     start_time = time.time()
     print("=" * 70)
-    print("TRACE-X FORENSIC PLATFORM - DATASET INGESTION & ML SCORING PIPELINE")
+    print("CHAINGUARD FORENSIC PLATFORM - DATASET INGESTION & ML SCORING PIPELINE")
     print("=" * 70)
     print(f"Data Directory : {data_dir}")
     print(f"Batch Size     : {batch_size:,}")
@@ -256,7 +256,7 @@ def run_ingestion(data_dir: str, limit: int = None, edges_limit: int = None, bat
 
 
 if __name__ == "__main__":
-    parser = argparse.ArgumentParser(description="Ingest Elliptic dataset into TRACE-X database")
+    parser = argparse.ArgumentParser(description="Ingest Elliptic dataset into ChainGuard database")
     parser.add_argument("--data-dir", default=os.getenv("DATASET_PATH", "data/elliptic_bitcoin_dataset"),
                         help="Path to directory containing Elliptic CSV files")
     parser.add_argument("--limit", type=int, default=None,

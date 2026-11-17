@@ -158,7 +158,7 @@ export const ReportDocument: React.FC<ReportDocumentProps> = ({ report, copyStat
 
       <section aria-labelledby="report-methodology-heading" className="space-y-3 border-t border-line pt-6">
         <h3 id="report-methodology-heading" className="section-heading">Methodology and limitations</h3>
-        <p className="break-words text-sm leading-7 text-ink-secondary">{report.methodology_and_limitations || 'TRACE-X predictions are probabilistic investigative leads. They are not legal proof and require independent corroboration.'}</p>
+        <p className="break-words text-sm leading-7 text-ink-secondary">{report.methodology_and_limitations || 'ChainGuard predictions are probabilistic investigative leads. They are not legal proof and require independent corroboration.'}</p>
       </section>
 
       <section aria-labelledby="report-integrity-heading" className="space-y-3 border-t border-line pt-6">

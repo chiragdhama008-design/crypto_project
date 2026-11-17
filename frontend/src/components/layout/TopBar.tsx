@@ -77,7 +77,7 @@ export function TopBar({ onOpenMobileMenu, health }: TopBarProps) {
     if (open) document.getElementById(`command-option-${selected}`)?.scrollIntoView({ block: 'nearest' });
   }, [selected, open]);
 
-  useEffect(() => { document.title = `${current.label} | TRACE-X`; }, [current.label]);
+  useEffect(() => { document.title = `${current.label} | ChainGuard`; }, [current.label]);
 
   function closeSearch() { setOpen(false); setQuery(''); setSelected(0); }
   function openSearch() { setOpen(true); setQuery(''); setSelected(0); }

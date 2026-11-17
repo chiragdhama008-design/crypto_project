@@ -1,5 +1,5 @@
 """
-TRACE-X Forensic Intelligence Platform - FastAPI Main Entrypoint.
+ChainGuard Forensic Intelligence Platform - FastAPI Main Entrypoint.
 """
 
 import logging
@@ -13,7 +13,7 @@ from fastapi.staticfiles import StaticFiles
 from backend.app.config import settings
 from backend.app.database import init_db
 
-logger = logging.getLogger("tracex")
+logger = logging.getLogger("chainguard")
 from backend.app.api.routes import (
     health,
     dashboard,
@@ -32,7 +32,7 @@ from backend.app.api.routes import (
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     print("=" * 60)
-    print("STARTING TRACE-X FORENSIC INTELLIGENCE BACKEND")
+    print("STARTING CHAINGUARD FORENSIC INTELLIGENCE BACKEND")
     print(f"Environment: {settings.ENVIRONMENT}")
     print(f"Active Model: {settings.ACTIVE_MODEL}")
     print(f"Dataset Path: {settings.DATASET_PATH}")
@@ -47,7 +47,7 @@ async def lifespan(app: FastAPI):
     except Exception as e:
         logger.warning("Could not auto-seed demo transactions: %s", e)
     yield
-    print("[TRACE-X] Backend shutdown cleanly.")
+    print("[ChainGuard] Backend shutdown cleanly.")
 
 
 app = FastAPI(

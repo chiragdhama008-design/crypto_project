@@ -1,7 +1,7 @@
 {
-  "name": "trace-x",
+  "name": "chainguard",
   "version": "1.0.0",
-  "description": "TRACE-X — Forensic Intelligence Platform for Bitcoin Transaction Analysis",
+  "description": "ChainGuard — Forensic Intelligence Platform for Bitcoin Transaction Analysis",
   "scripts": {
     "dev": "npm --prefix frontend run dev",
     "build": "npm --prefix frontend run build",

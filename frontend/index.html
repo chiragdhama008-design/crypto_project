@@ -11,10 +11,10 @@
     <meta name="theme-color" content="#0c1014" />
     <meta name="page-type" content="software" />
     <meta name="site-kind" content="software" />
-    <title>TRACE-X | Blockchain Forensic Intelligence Platform</title>
+    <title>ChainGuard | Blockchain Forensic Intelligence Platform</title>
     <meta
       name="description"
-      content="TRACE-X: Blockchain transaction forensics, 2-layer GraphSAGE network propagation intelligence, and composite AML risk triage on the Elliptic Bitcoin graph."
+      content="ChainGuard: Blockchain transaction forensics, 2-layer GraphSAGE network propagation intelligence, and composite AML risk triage on the Elliptic Bitcoin graph."
     />
     <link rel="preconnect" href="https://fonts.googleapis.com" />
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
@@ -25,12 +25,12 @@
     <script>
       (function () {
         try {
-          var saved = localStorage.getItem('tracex-theme');
+          var saved = localStorage.getItem('chainguard-theme') || localStorage.getItem('tracex-theme');
           var theme = saved === 'light' || saved === 'dark' ? saved : 'dark';
           document.documentElement.setAttribute('data-theme', theme);
           var meta = document.querySelector('meta[name="theme-color"]');
           if (meta) meta.setAttribute('content', theme === 'light' ? '#f4f7f4' : '#0c1014');
-          var motion = localStorage.getItem('tracex-motion');
+          var motion = localStorage.getItem('chainguard-motion') || localStorage.getItem('tracex-motion');
           document.documentElement.dataset.motion = motion || (window.matchMedia('(prefers-reduced-motion: reduce)').matches ? 'reduced' : 'full');
         } catch (e) {}
       })();

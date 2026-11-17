@@ -115,7 +115,7 @@ def calculate_risk_score(
         "topology_points": round(topo_contrib, 1),
         "feature_points": round(feat_contrib, 1),
         "trigger_reasons": reasons,
-        "scoring_standard": "TRACE-X Multi-Signal Composite Engine v1.0",
+        "scoring_standard": "ChainGuard Multi-Signal Composite Engine v1.0",
         "legal_disclaimer": "Model-derived forensic intelligence assessment. Not a definitive accusation of illegal conduct."
     }
 

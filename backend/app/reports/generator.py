@@ -68,7 +68,7 @@ class ReportGenerator:
             "status": case_data["status"],
             "created_at": case_data["created_at"],
             "generated_at": generated_at,
-            "investigator": "Forensic Intelligence Unit / TRACE-X System",
+            "investigator": "Forensic Intelligence Unit / ChainGuard System",
             "executive_summary": (
                 f"Forensic investigation dossier for Case #{case_data['id']}: '{case_data['case_name']}'. "
                 f"A total of {len(tx_list)} transactions were inspected with an average composite risk score of {avg_risk:.1f}/100. "
@@ -100,7 +100,7 @@ class ReportGenerator:
             "evidence_items": evidence_items,
             "forensic_notes": case_data["notes"],
             "methodology_and_limitations": (
-                "TRACE-X outputs represent model-derived statistical signals and network topology metrics. "
+                "ChainGuard outputs represent model-derived statistical signals and network topology metrics. "
                 "The findings are intended for investigative lead generation and research triage. "
                 "These signals do not constitute legally definitive proof of criminal activity without corroborated off-chain evidence."
             )

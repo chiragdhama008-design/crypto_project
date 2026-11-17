@@ -231,6 +231,6 @@ export function Overview() {
         <div className="border-t border-line pt-3"><Link to="/models" className="text-link">Compare model evaluations<ArrowUpRight size={15} /></Link><p className="text-[10px] text-ink-muted leading-relaxed">Cached evaluation does not establish live inference readiness.</p></div>
       </div>
     </section>
-    <p className="workspace-disclaimer"><Info size={12} />TRACE-X supports investigation. Probabilistic model signals are not proof of illicit activity and require independent verification.</p>
+    <p className="workspace-disclaimer"><Info size={12} />ChainGuard supports investigation. Probabilistic model signals are not proof of illicit activity and require independent verification.</p>
   </div>;
 }

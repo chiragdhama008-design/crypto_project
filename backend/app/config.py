@@ -1,5 +1,5 @@
 """
-TRACE-X Configuration Engine.
+ChainGuard Configuration Engine.
 Loads environment variables, validates Supabase credentials, and configures runtime settings.
 """
 
@@ -11,7 +11,7 @@ from pydantic import Field
 
 class Settings(BaseSettings):
     # App Information
-    APP_NAME: str = "TRACE-X Forensic Intelligence Platform"
+    APP_NAME: str = "ChainGuard Forensic Intelligence Platform"
     APP_VERSION: str = "1.0.0"
     ENVIRONMENT: str = "development"
     DEBUG: bool = Field(default=False, env="DEBUG")

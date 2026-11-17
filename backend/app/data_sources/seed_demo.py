@@ -1,5 +1,5 @@
 """
-TRACE-X Demo Dataset Seeder.
+ChainGuard Demo Dataset Seeder.
 Populates local development database with benchmark transactions and multi-hop flow edges
 when the database is unpopulated. Ensures out-of-the-box demo functionality for
 high-risk triage and Cytoscape 1-hop / 2-hop graph exploration.

@@ -55,7 +55,7 @@ export function Sidebar({ mobileOpen, onCloseMobile, collapsed, onToggleCollapse
     return (
       <div className={`sidebar-shell ${compact ? 'sidebar-collapsed' : ''}`}>
         <div className="sidebar-brand">
-          <Link to="/" aria-label="TRACE-X overview" onClick={mobile ? onCloseMobile : undefined}><TraceXLogo compact={compact} /></Link>
+          <Link to="/" aria-label="ChainGuard overview" onClick={mobile ? onCloseMobile : undefined}><TraceXLogo compact={compact} /></Link>
           {mobile && <button type="button" onClick={onCloseMobile} className="icon-button" aria-label="Close navigation menu"><X size={18} /></button>}
         </div>
         {!compact && <Link to="/dataset" className="sidebar-workspace" onClick={mobile ? onCloseMobile : undefined}>

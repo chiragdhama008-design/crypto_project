@@ -30,7 +30,7 @@ export const TraceXLogo: React.FC<TraceXLogoProps> = ({
         <div className="min-w-0">
           <div className="flex items-center gap-1.5">
             <span className="brand-name">
-              TRACE-X
+              ChainGuard
             </span>
           </div>
           {showSubtitle && (
@@ -43,3 +43,5 @@ export const TraceXLogo: React.FC<TraceXLogoProps> = ({
     </div>
   );
 };
+
+export const ChainGuardLogo = TraceXLogo;

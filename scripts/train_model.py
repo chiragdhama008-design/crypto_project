@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-TRACE-X Forensic Platform
+ChainGuard Forensic Platform
 ML Model Training & Evaluation Pipeline.
 Trains baseline ML models (Logistic Regression, Random Forest, Gradient Boosting)
 using temporal split (timesteps 1-34 train, 35-39 val, 40-49 test), computes real metrics,
@@ -28,7 +28,7 @@ from backend.app.risk.engine import calculate_risk_score, determine_risk_level
 
 def run_training(data_dir: str, model_types: list, update_db: bool = True):
     print("=" * 70)
-    print("TRACE-X FORENSIC PLATFORM - ML MODEL TRAINING PIPELINE")
+    print("CHAINGUARD FORENSIC PLATFORM - ML MODEL TRAINING PIPELINE")
     print("=" * 70)
 
     # Database session
@@ -241,7 +241,7 @@ def run_training(data_dir: str, model_types: list, update_db: bool = True):
 
 
 if __name__ == "__main__":
-    parser = argparse.ArgumentParser(description="Train baseline ML models for TRACE-X")
+    parser = argparse.ArgumentParser(description="Train baseline ML models for ChainGuard")
     parser.add_argument("--data-dir", default=os.getenv("DATASET_PATH", "data/elliptic_bitcoin_dataset"),
                         help="Path to directory containing Elliptic CSV files")
     parser.add_argument("--models", nargs="+", default=["logistic_regression", "random_forest", "gradient_boosting", "gnn"],

@@ -17,7 +17,7 @@ const ThemeContext = createContext<ThemeContextValue>({
 export const ThemeProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
   const [theme, setThemeState] = useState<ThemeMode>(() => {
     try {
-      const saved = localStorage.getItem('tracex-theme');
+      const saved = localStorage.getItem('chainguard-theme') || localStorage.getItem('tracex-theme');
       if (saved === 'light' || saved === 'dark') return saved;
     } catch {
       // ignore storage errors
@@ -32,7 +32,7 @@ export const ThemeProvider: React.FC<{ children: React.ReactNode }> = ({ childre
       meta.setAttribute('content', theme === 'light' ? '#f4f7f4' : '#0c1014');
     }
     try {
-      localStorage.setItem('tracex-theme', theme);
+      localStorage.setItem('chainguard-theme', theme);
     } catch {
       // ignore storage errors
     }
